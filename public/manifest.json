@@ -1,0 +1,16 @@
+{
+  "name": "Nexus",
+  "short_name": "Nexus",
+  "description": "Személyes kapcsolati háló térkép",
+  "start_url": "/ago_socihalo/",
+  "display": "standalone",
+  "background_color": "#0E0C08",
+  "theme_color": "#19160F",
+  "icons": [
+    {
+      "src": "/ago_socihalo/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-family:       #C85454;
+  --color-work:         #5085B5;
+  --color-friend:       #4FA870;
+  --color-business:     #C4A030;
+  --color-acquaintance: #7E6AB0;
+  --color-community:    #C06090;
+  --color-other:        #7A7568;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'JetBrains Mono', monospace;
+  background-color: #0E0C08;
+  color: #EEE6CF;
+  -webkit-font-smoothing: antialiased;
+  /* Subtle paper grain */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+}
+
+/* Serif for all headings and meaningful content */
+h1, h2, h3, h4 {
+  font-family: 'Lora', Georgia, serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Warm scrollbar — thinner, ink-colored */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #3A3425; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #E09A4A55; }
+
+/* Date input */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.5) sepia(0.3) brightness(0.8);
+  cursor: pointer;
+}
+
+/* Range — amber thumb */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  background: #3A3425;
+  border-radius: 2px;
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  background: #E09A4A;
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(224,154,74,0.4);
+}
+
+/* Select options */
+select option {
+  background-color: #19160F;
+  color: #EEE6CF;
+}
+
+/* Map canvas background — subtle dot grid like graph paper */
+.map-canvas {
+  background-image: radial-gradient(circle, #3A342530 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* Accent glow on focus */
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(224,154,74,0.25);
+}
