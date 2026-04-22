@@ -6,6 +6,7 @@ import { Select } from "./ui/Select"
 import { useCreatePerson } from "../hooks/usePeople"
 import { useAppStore } from "../store/useAppStore"
 import { GROUPS, ROLES } from "../lib/constants"
+import { toast } from "./ui/Toast"
 
 const GROUP_OPTIONS = [
   { value: "", label: "— nincs —" },
@@ -38,6 +39,7 @@ export default function CreatePersonModal() {
       setCreatePersonOpen(false)
       setSelectedPersonId(person.id)
       setName(""); setGroup(""); setRole("none"); setStrength("3")
+      toast.success(`Hozzáadva: ${person.display_name}`)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (msg.includes("relation") && msg.includes("does not exist")) {
@@ -57,9 +59,9 @@ export default function CreatePersonModal() {
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.15 }}
-        className="bg-surface border border-border rounded-xl p-6 w-96 font-mono shadow-2xl"
+        className="bg-surface border border-border-strong rounded-xl p-6 w-96 shadow-panel"
       >
-        <h2 className="text-text font-bold mb-5 font-serif text-lg">Új személy</h2>
+        <h2 className="text-text font-semibold mb-5 text-lg">Új személy</h2>
         <form onSubmit={handle} className="space-y-4">
           <Input
             label="Név"

@@ -1,3 +1,4 @@
+import { memo } from "react"
 import { CONNECTION_COLORS } from "../lib/constants"
 import type { Connection } from "../store/types"
 
@@ -11,7 +12,7 @@ interface EdgeProps {
   isPathHighlighted: boolean
 }
 
-export default function Edge({ connection, fromX, fromY, toX, toY, isDimmed, isPathHighlighted }: EdgeProps) {
+function EdgeImpl({ connection, fromX, fromY, toX, toY, isDimmed, isPathHighlighted }: EdgeProps) {
   const color = isPathHighlighted
     ? "#D97706"
     : connection.type
@@ -33,3 +34,13 @@ export default function Edge({ connection, fromX, fromY, toX, toY, isDimmed, isP
     />
   )
 }
+
+export default memo(EdgeImpl, (prev, next) =>
+  prev.fromX === next.fromX &&
+  prev.fromY === next.fromY &&
+  prev.toX === next.toX &&
+  prev.toY === next.toY &&
+  prev.isDimmed === next.isDimmed &&
+  prev.isPathHighlighted === next.isPathHighlighted &&
+  prev.connection === next.connection
+)

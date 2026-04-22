@@ -11,14 +11,16 @@ import Legend from "./Legend"
 import Toolbar from "./Toolbar"
 import MiniMap from "./MiniMap"
 import ConnectionDialog from "../../components/ConnectionDialog"
+import ConnectModeBanner from "./ConnectModeBanner"
 import { EmptyState } from "../../components/ui/EmptyState"
 import { Button } from "../../components/ui/Button"
+import { toast } from "../../components/ui/Toast"
 import { UserPlus } from "lucide-react"
 
 type SimNode = Person & d3.SimulationNodeDatum
 type SimLink = d3.SimulationLinkDatum<SimNode> & { data: Connection }
 
-const MIN_R = 4, MAX_R = 18
+const MIN_R = 5, MAX_R = 18
 
 export default function MapView() {
   const { data: people = [], isLoading: peopleLoading } = usePeople()
@@ -31,26 +33,34 @@ export default function MapView() {
     selectedPersonId, setSelectedPersonId,
     filters, connectMode, connectFromId, setConnectFromId, setConnectMode,
     pathHighlight,
+    setCreatePersonOpen, setActiveView,
   } = useAppStore()
 
   const svgRef      = useRef<SVGSVGElement>(null)
+  const gRef        = useRef<SVGGElement>(null)
   const simRef      = useRef<d3.Simulation<SimNode, SimLink> | null>(null)
   const nodesRef    = useRef<SimNode[]>([])
+  const transformRef = useRef({ x: 0, y: 0, k: 1 })
   const [tick, setTick]     = useState(0)
   const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 })
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [size, setSize]     = useState({ w: 800, h: 600 })
   const [pendingConn, setPendingConn] = useState<{ fromId: string; toId: string } | null>(null)
-  const dragRef = useRef<{ id: string; startX: number; startY: number } | null>(null)
+  const [isPanning, setIsPanning] = useState(false)
+  const dragRef = useRef<{ id: string; sx: number; sy: number; moved: boolean } | null>(null)
+  const tickRafRef = useRef<number | null>(null)
+  const transformRafRef = useRef<number | null>(null)
 
-  // Responsive container size
+  // Container size — observe parent
   useEffect(() => {
     if (!svgRef.current) return
+    const parent = svgRef.current.parentElement
+    if (!parent) return
     const ro = new ResizeObserver(entries => {
       const { width, height } = entries[0].contentRect
       setSize({ w: width, h: height })
     })
-    ro.observe(svgRef.current.parentElement!)
+    ro.observe(parent)
     return () => ro.disconnect()
   }, [])
 
@@ -78,15 +88,15 @@ export default function MapView() {
     [connections, filteredIds]
   )
 
-  // D3 simulation
+  // D3 simulation — RAF-throttled state ticks (no flicker)
   useEffect(() => {
     const nodeMap = new Map<string, SimNode>()
     filteredPeople.forEach(p => {
       const existing = nodesRef.current.find(n => n.id === p.id)
-      const node: SimNode = { ...p, x: existing?.x, y: existing?.y }
+      const node: SimNode = { ...p, x: existing?.x, y: existing?.y, vx: existing?.vx, vy: existing?.vy }
       if (p.pinned_x !== null && p.pinned_y !== null) {
-        node.x = p.pinned_x; node.y = p.pinned_y
         node.fx = p.pinned_x; node.fy = p.pinned_y
+        if (existing?.x === undefined) { node.x = p.pinned_x; node.y = p.pinned_y }
       }
       nodeMap.set(p.id, node)
     })
@@ -100,31 +110,68 @@ export default function MapView() {
     simRef.current?.stop()
 
     const sim = d3.forceSimulation<SimNode>(nodeList)
-      .force("link", d3.forceLink<SimNode, SimLink>(linkList).id(d => d.id).distance(80))
-      .force("charge", d3.forceManyBody<SimNode>().strength(-180))
-      .force("collide", d3.forceCollide<SimNode>(25))
+      .alpha(0.6)
+      .alphaDecay(0.04)
+      .force("link", d3.forceLink<SimNode, SimLink>(linkList).id(d => d.id).distance(90).strength(0.4))
+      .force("charge", d3.forceManyBody<SimNode>().strength(-220))
+      .force("collide", d3.forceCollide<SimNode>(28))
       .force("center", d3.forceCenter(0, 0))
       .on("tick", () => {
-        nodesRef.current = [...sim.nodes()]
-        setTick(t => t + 1)
+        nodesRef.current = sim.nodes()
+        if (tickRafRef.current !== null) return
+        tickRafRef.current = requestAnimationFrame(() => {
+          tickRafRef.current = null
+          setTick(t => t + 1)
+        })
       })
 
     simRef.current = sim
-    return () => { sim.stop() }
-  }, [filteredPeople.length, filteredConnections.length, filteredPeople, filteredConnections])
+    return () => {
+      sim.stop()
+      if (tickRafRef.current !== null) cancelAnimationFrame(tickRafRef.current)
+      tickRafRef.current = null
+    }
+  }, [filteredPeople, filteredConnections])
 
-  // D3 zoom
+  // D3 zoom — direct DOM update + RAF-throttled state for minimap
   useEffect(() => {
     if (!svgRef.current) return
     const svg = d3.select(svgRef.current)
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.05, 8])
-      .on("zoom", e => setTransform({ x: e.transform.x, y: e.transform.y, k: e.transform.k }))
+      .filter(event => {
+        // Allow wheel always, only allow drag pan on background (not on a node)
+        if (event.type === "wheel") return true
+        const target = event.target as Element
+        return !target.closest("[data-node-id]")
+      })
+      .on("start", () => setIsPanning(true))
+      .on("zoom", (e) => {
+        transformRef.current = { x: e.transform.x, y: e.transform.y, k: e.transform.k }
+        // Direct DOM update — bypass React for smooth pan
+        if (gRef.current) {
+          gRef.current.setAttribute(
+            "transform",
+            `translate(${e.transform.x},${e.transform.y}) scale(${e.transform.k})`
+          )
+        }
+        // Throttle React state updates (for MiniMap) to RAF
+        if (transformRafRef.current !== null) return
+        transformRafRef.current = requestAnimationFrame(() => {
+          transformRafRef.current = null
+          setTransform(transformRef.current)
+        })
+      })
+      .on("end", () => setIsPanning(false))
     svg.call(zoom)
-    return () => { svg.on(".zoom", null) }
+    return () => {
+      svg.on(".zoom", null)
+      if (transformRafRef.current !== null) cancelAnimationFrame(transformRafRef.current)
+      transformRafRef.current = null
+    }
   }, [])
 
-  // Node radius
+  // Node radius scaled by degree
   const maxDegree = useMemo(
     () => Math.max(1, ...filteredPeople.map(p => metrics.degreeMap.get(p.id) ?? 0)),
     [filteredPeople, metrics.degreeMap]
@@ -150,73 +197,101 @@ export default function MapView() {
 
   const pathSet = useMemo(() => pathHighlight ? new Set(pathHighlight) : null, [pathHighlight])
 
-  // Node mouse handlers
-  function handleNodeClick(person: Person) {
+  // ── Click + drag handlers ──────────────────────────────
+  const handleNodeClick = useCallback((person: Person) => {
     if (connectMode) {
       if (!connectFromId) {
         setConnectFromId(person.id)
       } else if (connectFromId !== person.id) {
         setPendingConn({ fromId: connectFromId, toId: person.id })
+      } else {
+        // clicked the source again — cancel
         setConnectFromId(null)
         setConnectMode(false)
       }
     } else {
-      setSelectedPersonId(selectedPersonId === person.id ? null : person.id)
+      setSelectedPersonId(person.id)
     }
-  }
+  }, [connectMode, connectFromId, setConnectFromId, setConnectMode, setSelectedPersonId])
 
-  function handleNodeMouseDown(e: React.MouseEvent, person: Person) {
+  const handleNodeMouseDown = useCallback((e: React.MouseEvent, person: Person) => {
     if (e.shiftKey) {
       e.stopPropagation()
       setConnectFromId(person.id)
       setConnectMode(true)
       return
     }
-    const node = nodesRef.current.find(n => n.id === person.id)
-    if (!node) return
-    dragRef.current = { id: person.id, startX: e.clientX, startY: e.clientY }
+    if (connectMode) return
+    e.stopPropagation()
+    dragRef.current = { id: person.id, sx: e.clientX, sy: e.clientY, moved: false }
+    const startNode = nodesRef.current.find(n => n.id === person.id)
+    if (!startNode) return
+    const startFx = startNode.x ?? 0
+    const startFy = startNode.y ?? 0
+    startNode.fx = startFx
+    startNode.fy = startFy
 
     function onMove(me: MouseEvent) {
-      const n = nodesRef.current.find(x => x.id === person.id)
+      const drag = dragRef.current
+      if (!drag) return
+      const dx = (me.clientX - drag.sx) / transformRef.current.k
+      const dy = (me.clientY - drag.sy) / transformRef.current.k
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) drag.moved = true
+      const n = nodesRef.current.find(x => x.id === drag.id)
       if (!n) return
-      n.fx = (n.fx ?? n.x ?? 0) + (me.clientX - (dragRef.current?.startX ?? me.clientX)) / transform.k
-      n.fy = (n.fy ?? n.y ?? 0) + (me.clientY - (dragRef.current?.startY ?? me.clientY)) / transform.k
-      dragRef.current = { id: person.id, startX: me.clientX, startY: me.clientY }
-      simRef.current?.alpha(0.1).restart()
+      n.fx = startFx + dx
+      n.fy = startFy + dy
+      simRef.current?.alpha(0.15).restart()
     }
 
     function onUp() {
-      const n = nodesRef.current.find(x => x.id === person.id)
-      if (n?.fx !== undefined && n.fx !== null) {
-        updatePerson.mutate({ id: person.id, pinned_x: n.fx, pinned_y: n.fy ?? null })
+      const drag = dragRef.current
+      if (!drag) return
+      const n = nodesRef.current.find(x => x.id === drag.id)
+      if (drag.moved && n && n.fx !== undefined && n.fx !== null) {
+        updatePerson.mutate({ id: drag.id, pinned_x: n.fx, pinned_y: n.fy ?? null })
       }
       dragRef.current = null
       window.removeEventListener("mousemove", onMove)
       window.removeEventListener("mouseup", onUp)
     }
-
     window.addEventListener("mousemove", onMove)
     window.addEventListener("mouseup", onUp)
-  }
+  }, [connectMode, setConnectFromId, setConnectMode, updatePerson])
 
+  // ── ESC cancels connect mode ──────────────────────────
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        if (pendingConn) { setPendingConn(null); return }
+        if (connectMode) {
+          setConnectMode(false)
+          setConnectFromId(null)
+        }
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [connectMode, pendingConn, setConnectMode, setConnectFromId])
+
+  // Position lookup — only recomputed when sim ticks (RAF-throttled)
   const nodePositions = useMemo(() => {
     const m = new Map<string, { x: number; y: number }>()
     nodesRef.current.forEach(n => m.set(n.id, { x: n.x ?? 0, y: n.y ?? 0 }))
     return m
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tick])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick, filteredPeople.length])
 
-  const cx = size.w / 2 + transform.x
-  const cy = size.h / 2 + transform.y
+  const cx = size.w / 2
+  const cy = size.h / 2
 
-  const { setCreatePersonOpen, setActiveView } = useAppStore()
-
+  // ── Loading + empty states ────────────────────────────
   if (peopleLoading) {
     return (
       <div className="relative w-full h-full bg-app overflow-hidden flex items-center justify-center">
-        <div className="text-center font-mono">
-          <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-muted text-sm">Betöltés...</p>
+        <div className="text-center">
+          <div className="w-7 h-7 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-muted text-sm">Hálózat betöltése…</p>
         </div>
       </div>
     )
@@ -228,12 +303,12 @@ export default function MapView() {
         <Toolbar />
         <EmptyState
           icon="⬡"
-          title="Üres háló"
-          sub="Add hozzá az első személyt, vagy importálj névjegyeket"
+          title="Üres hálózat"
+          sub="Adj hozzá személyeket, vagy importálj névjegyeket egy meglévő forrásból."
           action={
             <div className="flex gap-2">
               <Button variant="primary" size="sm" onClick={() => setCreatePersonOpen(true)}>
-                <UserPlus size={13} /> Személy hozzáadása
+                <UserPlus size={13} /> Új személy
               </Button>
               <Button variant="secondary" size="sm" onClick={() => setActiveView("import")}>
                 Importálás
@@ -245,20 +320,35 @@ export default function MapView() {
     )
   }
 
+  const cursor = connectMode
+    ? (connectFromId ? "crosshair" : "crosshair")
+    : isPanning ? "grabbing" : "grab"
+
   return (
     <div className="relative w-full h-full bg-app map-canvas overflow-hidden">
       <Toolbar />
+
+      {/* Connect mode banner — slides in from top under the toolbar */}
+      <ConnectModeBanner
+        active={connectMode}
+        sourceName={connectFromId ? people.find(p => p.id === connectFromId)?.display_name ?? null : null}
+        onCancel={() => { setConnectMode(false); setConnectFromId(null) }}
+      />
 
       <svg
         ref={svgRef}
         width="100%"
         height="100%"
         className="block"
-        style={{ cursor: connectMode ? "crosshair" : "grab", pointerEvents: "all", touchAction: "none" }}
+        style={{ cursor, touchAction: "none" }}
       >
-        {/* Background capture rect — fixed to viewport so zoom/pan works on empty space */}
+        {/* Background capture rect — anchors d3 zoom on empty space */}
         <rect width="100%" height="100%" fill="white" fillOpacity={0} pointerEvents="all" />
-        <g transform={`translate(${cx},${cy}) scale(${transform.k})`}>
+
+        <g
+          ref={gRef}
+          transform={`translate(${cx + transform.x},${cy + transform.y}) scale(${transform.k})`}
+        >
           {/* Edges */}
           {filteredConnections.map(c => {
             const from = nodePositions.get(c.from_id)
@@ -282,27 +372,31 @@ export default function MapView() {
             )
           })}
 
-          {/* Nodes */}
+          {/* Nodes — wrapped in data-attr group so zoom filter can detect node clicks */}
           {nodesRef.current.map(n => {
             const pos = nodePositions.get(n.id) ?? { x: 0, y: 0 }
             const dimmed = hoveredId !== null && neighborSet
               ? !neighborSet.has(n.id)
               : false
             const inPath = pathSet?.has(n.id) ?? false
+            const isSel = selectedPersonId === n.id
+            const isSrc = connectFromId === n.id
             return (
-              <Node
-                key={n.id}
-                person={n}
-                x={pos.x} y={pos.y}
-                radius={nodeRadius(n.id)}
-                isSelected={selectedPersonId === n.id || connectFromId === n.id}
-                isDimmed={dimmed}
-                isPathHighlighted={inPath}
-                onClick={() => handleNodeClick(n)}
-                onMouseEnter={() => setHoveredId(n.id)}
-                onMouseLeave={() => setHoveredId(null)}
-                onMouseDown={e => handleNodeMouseDown(e, n)}
-              />
+              <g key={n.id} data-node-id={n.id}>
+                <Node
+                  person={n}
+                  x={pos.x} y={pos.y}
+                  radius={nodeRadius(n.id)}
+                  isSelected={isSel}
+                  isConnectSource={isSrc}
+                  isDimmed={dimmed}
+                  isPathHighlighted={inPath}
+                  onClick={() => handleNodeClick(n)}
+                  onMouseEnter={() => setHoveredId(n.id)}
+                  onMouseLeave={() => setHoveredId(null)}
+                  onMouseDown={(e) => handleNodeMouseDown(e, n)}
+                />
+              </g>
             )
           })}
         </g>
@@ -316,9 +410,12 @@ export default function MapView() {
         height={size.h}
       />
 
-      {/* Node count */}
-      <div className="absolute top-3 right-4 text-xs text-muted font-mono">
+      {/* Stats footer */}
+      <div className="absolute bottom-4 right-4 text-xs text-muted bg-surface/80 backdrop-blur border border-border rounded px-2.5 py-1 pointer-events-none">
         {filteredPeople.length} személy · {filteredConnections.length} kapcsolat
+        {filteredPeople.length !== people.length && (
+          <span className="ml-1 text-accent">(szűrve)</span>
+        )}
       </div>
 
       {pendingConn && (
@@ -327,10 +424,20 @@ export default function MapView() {
           toId={pendingConn.toId}
           people={people}
           onConfirm={async (type, strength, context) => {
-            await createConn.mutateAsync({ from_id: pendingConn.fromId, to_id: pendingConn.toId, type, strength, context })
+            try {
+              await createConn.mutateAsync({ from_id: pendingConn.fromId, to_id: pendingConn.toId, type, strength, context })
+              toast.success("Kapcsolat létrejött")
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : "Hiba a mentésnél")
+            }
             setPendingConn(null)
+            setConnectFromId(null)
+            setConnectMode(false)
           }}
-          onCancel={() => setPendingConn(null)}
+          onCancel={() => {
+            setPendingConn(null)
+            setConnectFromId(null)
+          }}
         />
       )}
     </div>

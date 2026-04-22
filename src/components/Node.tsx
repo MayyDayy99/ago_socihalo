@@ -1,3 +1,4 @@
+import { memo } from "react"
 import type { Person } from "../store/types"
 import { GROUPS, ROLES } from "../lib/constants"
 
@@ -7,6 +8,7 @@ interface NodeProps {
   y: number
   radius: number
   isSelected: boolean
+  isConnectSource: boolean
   isDimmed: boolean
   isPathHighlighted: boolean
   onClick: () => void
@@ -15,17 +17,20 @@ interface NodeProps {
   onMouseDown: (e: React.MouseEvent) => void
 }
 
-export default function Node({
-  person, x, y, radius, isSelected, isDimmed, isPathHighlighted,
-  onClick, onMouseEnter, onMouseLeave, onMouseDown
+function NodeImpl({
+  person, x, y, radius,
+  isSelected, isConnectSource, isDimmed, isPathHighlighted,
+  onClick, onMouseEnter, onMouseLeave, onMouseDown,
 }: NodeProps) {
   const groupColor = person.group_key ? GROUPS[person.group_key]?.color ?? "#6B7280" : "#6B7280"
   const roleColor  = ROLES[person.role_key]?.color
   const hasRole    = person.role_key !== "none"
 
-  const opacity = isDimmed ? 0.18 : 1
+  const opacity = isDimmed ? 0.22 : 1
 
-  const ringColor = isSelected
+  const ringColor = isConnectSource
+    ? "#D97706"
+    : isSelected
     ? "#111827"
     : isPathHighlighted
     ? "#D97706"
@@ -33,11 +38,11 @@ export default function Node({
     ? roleColor
     : groupColor
 
-  const ringWidth = isSelected ? 2.5 : isPathHighlighted ? 2 : hasRole ? 2 : 1.5
+  const ringWidth = isConnectSource ? 3 : isSelected ? 2.5 : isPathHighlighted ? 2 : hasRole ? 2 : 1.5
 
   const initials = person.display_name
     .split(" ")
-    .map(w => w[0])
+    .map((w) => w[0])
     .slice(0, 2)
     .join("")
     .toUpperCase()
@@ -51,36 +56,35 @@ export default function Node({
       onMouseLeave={onMouseLeave}
       onMouseDown={onMouseDown}
     >
-      {/* Selection halo */}
-      {isSelected && (
-        <circle r={radius + 8} fill={groupColor} opacity={0.12} />
+      {/* Connect source halo — pulsing ring */}
+      {isConnectSource && (
+        <>
+          <circle r={radius + 10} fill="#D97706" opacity={0.10}>
+            <animate attributeName="r" values={`${radius + 8};${radius + 14};${radius + 8}`} dur="1.4s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.06;0.18;0.06" dur="1.4s" repeatCount="indefinite" />
+          </circle>
+        </>
       )}
-      {/* Outer glow when path-highlighted */}
-      {isPathHighlighted && !isSelected && (
+      {/* Selection halo */}
+      {isSelected && !isConnectSource && (
+        <circle r={radius + 7} fill={groupColor} opacity={0.14} />
+      )}
+      {/* Path highlight glow */}
+      {isPathHighlighted && !isSelected && !isConnectSource && (
         <circle r={radius + 5} fill="#D97706" opacity={0.18} />
       )}
 
       {/* Main fill — white with group color border */}
-      <circle
-        r={radius}
-        fill="#FFFFFF"
-        stroke={groupColor}
-        strokeWidth={1}
-        fillOpacity={1}
-      />
-      {/* Color wash — the group color as a soft tint */}
-      <circle
-        r={radius}
-        fill={groupColor}
-        fillOpacity={0.12}
-      />
+      <circle r={radius} fill="#FFFFFF" stroke={groupColor} strokeWidth={1} />
+      {/* Color wash */}
+      <circle r={radius} fill={groupColor} fillOpacity={0.12} />
       {/* Role / selection ring */}
       <circle
         r={radius}
         fill="none"
         stroke={ringColor}
         strokeWidth={ringWidth}
-        strokeOpacity={isSelected || isPathHighlighted ? 1 : 0.9}
+        strokeOpacity={isSelected || isPathHighlighted || isConnectSource ? 1 : 0.9}
       />
 
       {/* Initials */}
@@ -97,7 +101,7 @@ export default function Node({
         </text>
       )}
 
-      {/* Name label below node */}
+      {/* Name label */}
       <text
         y={radius + 12}
         textAnchor="middle"
@@ -105,10 +109,21 @@ export default function Node({
         fill={isDimmed ? "#9CA3AF" : "#374151"}
         style={{ pointerEvents: "none", userSelect: "none" }}
       >
-        {person.display_name.length > 15
-          ? person.display_name.slice(0, 14) + "…"
-          : person.display_name}
+        {person.display_name.length > 18 ? person.display_name.slice(0, 17) + "…" : person.display_name}
       </text>
     </g>
   )
 }
+
+export default memo(NodeImpl, (prev, next) =>
+  prev.x === next.x &&
+  prev.y === next.y &&
+  prev.radius === next.radius &&
+  prev.isSelected === next.isSelected &&
+  prev.isConnectSource === next.isConnectSource &&
+  prev.isDimmed === next.isDimmed &&
+  prev.isPathHighlighted === next.isPathHighlighted &&
+  prev.person === next.person &&
+  prev.onClick === next.onClick &&
+  prev.onMouseDown === next.onMouseDown
+)

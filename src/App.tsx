@@ -17,8 +17,9 @@ import CommandPalette    from "./views/CommandPalette/CommandPalette"
 import CreatePersonModal from "./components/CreatePersonModal"
 import ShortcutsOverlay  from "./components/ShortcutsOverlay"
 import { ErrorBoundary } from "./components/ErrorBoundary"
+import { ToastContainer } from "./components/ui/Toast"
 
-import { Map, List, BarChart2, Upload, Settings } from "lucide-react"
+import { Map, List, BarChart2, Upload, Settings, Search, Keyboard } from "lucide-react"
 import type { View } from "./store/useAppStore"
 
 const queryClient = new QueryClient({
@@ -34,6 +35,22 @@ const NAV: Array<{ id: View; label: string; Icon: typeof Map }> = [
   { id: "import",    label: "Importálás",  Icon: Upload },
   { id: "settings",  label: "Beállítások", Icon: Settings },
 ]
+
+function NexusLogo({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+      <circle cx="16" cy="16" r="5" fill="#374151"/>
+      <circle cx="6" cy="8" r="3" fill="#059669"/>
+      <circle cx="26" cy="8" r="3" fill="#DC2626"/>
+      <circle cx="6" cy="24" r="3" fill="#D97706"/>
+      <circle cx="26" cy="24" r="3" fill="#7C3AED"/>
+      <line x1="16" y1="16" x2="6"  y2="8"  stroke="#9CA3AF" strokeWidth="1.5" opacity="0.7"/>
+      <line x1="16" y1="16" x2="26" y2="8"  stroke="#9CA3AF" strokeWidth="1.5" opacity="0.7"/>
+      <line x1="16" y1="16" x2="6"  y2="24" stroke="#9CA3AF" strokeWidth="1.5" opacity="0.7"/>
+      <line x1="16" y1="16" x2="26" y2="24" stroke="#9CA3AF" strokeWidth="1.5" opacity="0.7"/>
+    </svg>
+  )
+}
 
 function AppShell() {
   const {
@@ -66,47 +83,45 @@ function AppShell() {
     <div className={`flex flex-col bg-app ${isMobile ? "h-[100dvh]" : "h-screen"}`}>
       {/* Top navigation — desktop */}
       {!isMobile && (
-        <nav className="flex items-center h-11 bg-surface border-b border-border px-4 gap-0.5 flex-shrink-0 shadow-card">
-          <div className="flex items-center gap-2 mr-5">
-            <svg width="18" height="18" viewBox="0 0 32 32" fill="none">
-              <circle cx="16" cy="16" r="5" fill="#374151"/>
-              <circle cx="6" cy="8" r="3" fill="#059669"/>
-              <circle cx="26" cy="8" r="3" fill="#DC2626"/>
-              <circle cx="6" cy="24" r="3" fill="#D97706"/>
-              <circle cx="26" cy="24" r="3" fill="#7C3AED"/>
-              <line x1="16" y1="16" x2="6" y2="8" stroke="#9CA3AF" strokeWidth="1.5" opacity="0.7"/>
-              <line x1="16" y1="16" x2="26" y2="8" stroke="#9CA3AF" strokeWidth="1.5" opacity="0.7"/>
-              <line x1="16" y1="16" x2="6" y2="24" stroke="#9CA3AF" strokeWidth="1.5" opacity="0.7"/>
-              <line x1="16" y1="16" x2="26" y2="24" stroke="#9CA3AF" strokeWidth="1.5" opacity="0.7"/>
-            </svg>
+        <nav className="flex items-center h-12 bg-surface border-b border-border-strong px-3 gap-1 flex-shrink-0">
+          <div className="flex items-center gap-2 mr-3 pl-1">
+            <NexusLogo size={18} />
             <span className="text-sm font-semibold tracking-tight text-text">Nexus</span>
           </div>
-          {NAV.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveView(id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-mono transition-colors
-                ${activeView === id
-                  ? "bg-surface-2 text-text"
-                  : "text-muted hover:text-text hover:bg-surface-2/50"}`}
-            >
-              <Icon size={13} />
-              {label}
-            </button>
-          ))}
-          <div className="ml-auto flex items-center gap-2">
-            <button
-              onClick={() => setShortcutsOpen(true)}
-              className="text-muted hover:text-text text-xs font-mono transition-colors"
-              title="Billentyűparancsok (?)"
-            >
-              ?
-            </button>
+          <div className="h-5 w-px bg-border mx-1" />
+          {NAV.map(({ id, label, Icon }) => {
+            const active = activeView === id
+            return (
+              <button
+                key={id}
+                onClick={() => setActiveView(id)}
+                className={`relative flex items-center gap-1.5 px-3 h-8 rounded text-sm transition-colors
+                  ${active
+                    ? "bg-accent/10 text-accent font-medium"
+                    : "text-muted hover:text-text hover:bg-surface-2"}`}
+              >
+                <Icon size={14} />
+                {label}
+              </button>
+            )
+          })}
+          <div className="ml-auto flex items-center gap-1">
             <button
               onClick={() => setCommandPaletteOpen(true)}
-              className="flex items-center gap-1.5 text-xs text-muted hover:text-text transition-colors"
+              className="flex items-center gap-2 px-2.5 h-8 rounded text-xs text-muted hover:text-text hover:bg-surface-2 transition-colors"
+              title="Parancspaletta (Ctrl+K)"
             >
-              <kbd className="border border-border rounded px-1 py-0.5 text-xs font-mono bg-surface-2">⌘K</kbd>
+              <Search size={13} />
+              <span>Keresés</span>
+              <kbd className="border border-border-strong rounded px-1 py-0.5 text-[10px] bg-surface-2 ml-1">Ctrl+K</kbd>
+            </button>
+            <button
+              onClick={() => setShortcutsOpen(true)}
+              className="text-muted hover:text-text p-1.5 rounded hover:bg-surface-2 transition-colors"
+              title="Billentyűparancsok (?)"
+              aria-label="Billentyűparancsok"
+            >
+              <Keyboard size={14} />
             </button>
           </div>
         </nav>
@@ -114,35 +129,26 @@ function AppShell() {
 
       {/* Mobile top bar */}
       {isMobile && (
-        <div className="flex items-center justify-between h-11 bg-surface border-b border-border px-4 flex-shrink-0">
+        <div className="flex items-center justify-between h-12 bg-surface border-b border-border-strong px-4 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <svg width="16" height="16" viewBox="0 0 32 32" fill="none">
-              <circle cx="16" cy="16" r="5" fill="#374151"/>
-              <circle cx="6" cy="8" r="3" fill="#059669"/>
-              <circle cx="26" cy="8" r="3" fill="#DC2626"/>
-              <circle cx="6" cy="24" r="3" fill="#D97706"/>
-              <circle cx="26" cy="24" r="3" fill="#7C3AED"/>
-              <line x1="16" y1="16" x2="6" y2="8" stroke="#9CA3AF" strokeWidth="1.5" opacity="0.7"/>
-              <line x1="16" y1="16" x2="26" y2="8" stroke="#9CA3AF" strokeWidth="1.5" opacity="0.7"/>
-              <line x1="16" y1="16" x2="6" y2="24" stroke="#9CA3AF" strokeWidth="1.5" opacity="0.7"/>
-              <line x1="16" y1="16" x2="26" y2="24" stroke="#9CA3AF" strokeWidth="1.5" opacity="0.7"/>
-            </svg>
+            <NexusLogo size={16} />
             <span className="text-sm font-semibold tracking-tight text-text">Nexus</span>
+            <span className="text-sm text-muted">·</span>
+            <span className="text-sm text-text">{NAV.find(n => n.id === activeView)?.label}</span>
           </div>
           <button
             onClick={() => setCommandPaletteOpen(true)}
-            className="text-muted p-1"
+            className="text-muted hover:text-text p-1.5 rounded hover:bg-surface-2"
+            aria-label="Keresés"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
+            <Search size={16} />
           </button>
         </div>
       )}
 
       {/* Main content */}
       <div className={`flex-1 flex overflow-hidden ${isMobile ? "flex-col" : ""}`}>
-        <main className="flex-1 overflow-hidden">
+        <main className="flex-1 overflow-hidden min-w-0">
           <ErrorBoundary>
             {activeView === "map"       && <MapView />}
             {activeView === "list"      && <PeopleList />}
@@ -162,18 +168,21 @@ function AppShell() {
 
       {/* Mobile bottom nav */}
       {isMobile && (
-        <nav className="flex items-center justify-around h-14 bg-surface border-t border-border flex-shrink-0 px-2">
-          {NAV.map(({ id, Icon, label }) => (
-            <button
-              key={id}
-              onClick={() => setActiveView(id)}
-              className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg transition-colors min-w-0
-                ${activeView === id ? "text-accent" : "text-muted"}`}
-            >
-              <Icon size={18} />
-              <span className="text-[9px] font-mono truncate">{label}</span>
-            </button>
-          ))}
+        <nav className="flex items-center justify-around h-14 bg-surface border-t border-border-strong flex-shrink-0 px-2">
+          {NAV.map(({ id, Icon, label }) => {
+            const active = activeView === id
+            return (
+              <button
+                key={id}
+                onClick={() => setActiveView(id)}
+                className={`flex flex-col items-center justify-center gap-0.5 px-3 py-1 rounded-lg transition-colors min-w-0 flex-1
+                  ${active ? "text-accent" : "text-muted"}`}
+              >
+                <Icon size={18} />
+                <span className="text-[10px] truncate">{label}</span>
+              </button>
+            )
+          })}
         </nav>
       )}
 
@@ -194,16 +203,17 @@ function AppShell() {
       </AnimatePresence>
 
       <CreatePersonModal />
+      <ToastContainer />
     </div>
   )
 }
 
 function LoadingScreen() {
   return (
-    <div className="h-screen bg-app flex items-center justify-center font-mono">
+    <div className="h-screen bg-app flex items-center justify-center">
       <div className="text-center">
-        <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-        <p className="text-muted text-sm">Betöltés...</p>
+        <div className="w-7 h-7 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+        <p className="text-muted text-sm">Betöltés…</p>
       </div>
     </div>
   )
