@@ -254,10 +254,10 @@ export default function MapView() {
         width="100%"
         height="100%"
         className="block"
-        style={{ cursor: connectMode ? "crosshair" : "grab" }}
+        style={{ cursor: connectMode ? "crosshair" : "grab", pointerEvents: "all", touchAction: "none" }}
       >
-        {/* Transparent background captures pan/zoom events on empty space */}
-        <rect width="100%" height="100%" fill="transparent" />
+        {/* Background capture rect — fixed to viewport so zoom/pan works on empty space */}
+        <rect width="100%" height="100%" fill="white" fillOpacity={0} pointerEvents="all" />
         <g transform={`translate(${cx},${cy}) scale(${transform.k})`}>
           {/* Edges */}
           {filteredConnections.map(c => {
