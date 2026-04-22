@@ -26,7 +26,7 @@ export default function FacebookStep({ onParsed }: FacebookStepProps) {
   return (
     <div className="space-y-5">
       <div className="bg-surface-2 border border-border rounded-lg p-4 text-sm text-muted space-y-2">
-        <p className="text-white font-medium">Facebook adatexport szükséges</p>
+        <p className="text-text font-medium">Facebook adatexport szükséges</p>
         <ol className="list-decimal list-inside space-y-1 text-xs">
           <li>Menj a Facebook → Beállítások → Adataid letöltése</li>
           <li>Válaszd a JSON formátumot</li>

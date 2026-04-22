@@ -4,8 +4,8 @@
   "description": "Személyes kapcsolati háló térkép",
   "start_url": "/ago_socihalo/",
   "display": "standalone",
-  "background_color": "#0E0C08",
-  "theme_color": "#19160F",
+  "background_color": "#F5F5F5",
+  "theme_color": "#FFFFFF",
   "icons": [
     {
       "src": "/ago_socihalo/favicon.svg",

@@ -69,17 +69,17 @@ function AppShell() {
         <nav className="flex items-center h-11 bg-surface border-b border-border px-4 gap-0.5 flex-shrink-0 shadow-card">
           <div className="flex items-center gap-2 mr-5">
             <svg width="18" height="18" viewBox="0 0 32 32" fill="none">
-              <circle cx="16" cy="16" r="5" fill="#C9924A"/>
-              <circle cx="6" cy="8" r="3" fill="#4D9E6E"/>
-              <circle cx="26" cy="8" r="3" fill="#BF5454"/>
-              <circle cx="6" cy="24" r="3" fill="#C49A3D"/>
-              <circle cx="26" cy="24" r="3" fill="#7A68A8"/>
-              <line x1="16" y1="16" x2="6" y2="8" stroke="#C9924A" strokeWidth="1.5" opacity="0.5"/>
-              <line x1="16" y1="16" x2="26" y2="8" stroke="#C9924A" strokeWidth="1.5" opacity="0.5"/>
-              <line x1="16" y1="16" x2="6" y2="24" stroke="#C9924A" strokeWidth="1.5" opacity="0.5"/>
-              <line x1="16" y1="16" x2="26" y2="24" stroke="#C9924A" strokeWidth="1.5" opacity="0.5"/>
+              <circle cx="16" cy="16" r="5" fill="#374151"/>
+              <circle cx="6" cy="8" r="3" fill="#059669"/>
+              <circle cx="26" cy="8" r="3" fill="#DC2626"/>
+              <circle cx="6" cy="24" r="3" fill="#D97706"/>
+              <circle cx="26" cy="24" r="3" fill="#7C3AED"/>
+              <line x1="16" y1="16" x2="6" y2="8" stroke="#9CA3AF" strokeWidth="1.5" opacity="0.7"/>
+              <line x1="16" y1="16" x2="26" y2="8" stroke="#9CA3AF" strokeWidth="1.5" opacity="0.7"/>
+              <line x1="16" y1="16" x2="6" y2="24" stroke="#9CA3AF" strokeWidth="1.5" opacity="0.7"/>
+              <line x1="16" y1="16" x2="26" y2="24" stroke="#9CA3AF" strokeWidth="1.5" opacity="0.7"/>
             </svg>
-            <span className="text-sm font-bold tracking-widest text-text font-serif">Nexus</span>
+            <span className="text-sm font-semibold tracking-tight text-text">Nexus</span>
           </div>
           {NAV.map(({ id, label, Icon }) => (
             <button
@@ -97,14 +97,14 @@ function AppShell() {
           <div className="ml-auto flex items-center gap-2">
             <button
               onClick={() => setShortcutsOpen(true)}
-              className="text-muted hover:text-white text-xs font-mono transition-colors"
+              className="text-muted hover:text-text text-xs font-mono transition-colors"
               title="Billentyűparancsok (?)"
             >
               ?
             </button>
             <button
               onClick={() => setCommandPaletteOpen(true)}
-              className="flex items-center gap-1.5 text-xs text-muted hover:text-white transition-colors"
+              className="flex items-center gap-1.5 text-xs text-muted hover:text-text transition-colors"
             >
               <kbd className="border border-border rounded px-1 py-0.5 text-xs font-mono bg-surface-2">⌘K</kbd>
             </button>
@@ -117,17 +117,17 @@ function AppShell() {
         <div className="flex items-center justify-between h-11 bg-surface border-b border-border px-4 flex-shrink-0">
           <div className="flex items-center gap-2">
             <svg width="16" height="16" viewBox="0 0 32 32" fill="none">
-              <circle cx="16" cy="16" r="5" fill="#C9924A"/>
-              <circle cx="6" cy="8" r="3" fill="#4D9E6E"/>
-              <circle cx="26" cy="8" r="3" fill="#BF5454"/>
-              <circle cx="6" cy="24" r="3" fill="#C49A3D"/>
-              <circle cx="26" cy="24" r="3" fill="#7A68A8"/>
-              <line x1="16" y1="16" x2="6" y2="8" stroke="#C9924A" strokeWidth="1.5" opacity="0.5"/>
-              <line x1="16" y1="16" x2="26" y2="8" stroke="#C9924A" strokeWidth="1.5" opacity="0.5"/>
-              <line x1="16" y1="16" x2="6" y2="24" stroke="#C9924A" strokeWidth="1.5" opacity="0.5"/>
-              <line x1="16" y1="16" x2="26" y2="24" stroke="#C9924A" strokeWidth="1.5" opacity="0.5"/>
+              <circle cx="16" cy="16" r="5" fill="#374151"/>
+              <circle cx="6" cy="8" r="3" fill="#059669"/>
+              <circle cx="26" cy="8" r="3" fill="#DC2626"/>
+              <circle cx="6" cy="24" r="3" fill="#D97706"/>
+              <circle cx="26" cy="24" r="3" fill="#7C3AED"/>
+              <line x1="16" y1="16" x2="6" y2="8" stroke="#9CA3AF" strokeWidth="1.5" opacity="0.7"/>
+              <line x1="16" y1="16" x2="26" y2="8" stroke="#9CA3AF" strokeWidth="1.5" opacity="0.7"/>
+              <line x1="16" y1="16" x2="6" y2="24" stroke="#9CA3AF" strokeWidth="1.5" opacity="0.7"/>
+              <line x1="16" y1="16" x2="26" y2="24" stroke="#9CA3AF" strokeWidth="1.5" opacity="0.7"/>
             </svg>
-            <span className="text-sm font-bold tracking-widest text-text font-serif">Nexus</span>
+            <span className="text-sm font-semibold tracking-tight text-text">Nexus</span>
           </div>
           <button
             onClick={() => setCommandPaletteOpen(true)}
@@ -203,7 +203,7 @@ function LoadingScreen() {
     <div className="h-screen bg-app flex items-center justify-center font-mono">
       <div className="text-center">
         <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-        <p className="text-muted text-sm font-serif">Betöltés...</p>
+        <p className="text-muted text-sm">Betöltés...</p>
       </div>
     </div>
   )

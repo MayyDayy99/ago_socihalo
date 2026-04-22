@@ -45,7 +45,7 @@ export default function Toolbar() {
           className="bg-transparent text-sm text-text placeholder-muted focus:outline-none w-44 font-mono"
         />
         {filters.search && (
-          <button onClick={() => setFilter("search", "")} className="text-muted hover:text-white">
+          <button onClick={() => setFilter("search", "")} className="text-muted hover:text-text">
             <X size={12} />
           </button>
         )}

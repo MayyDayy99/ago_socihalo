@@ -64,7 +64,7 @@ export default function ImportWizard() {
   return (
     <div className="h-full overflow-y-auto bg-app font-mono p-6">
       <div className="max-w-lg mx-auto">
-        <h1 className="text-lg font-bold text-white mb-1">Névjegyek importálása</h1>
+        <h1 className="text-lg font-bold text-text mb-1">Névjegyek importálása</h1>
         <p className="text-muted text-sm mb-6">Töltsd fel meglévő kapcsolataidat egyszerre</p>
 
         {step === "choose" && (
@@ -79,7 +79,7 @@ export default function ImportWizard() {
                   {s.icon}
                 </div>
                 <div>
-                  <p className="text-white text-sm font-medium">{s.title}</p>
+                  <p className="text-text text-sm font-medium">{s.title}</p>
                   <p className="text-muted text-xs">{s.sub}</p>
                 </div>
               </button>
@@ -99,10 +99,10 @@ export default function ImportWizard() {
 
         {step === "import" && (
           <div>
-            <button onClick={reset} className="text-xs text-muted hover:text-white mb-5 flex items-center gap-1">
+            <button onClick={reset} className="text-xs text-muted hover:text-text mb-5 flex items-center gap-1">
               ← Vissza a forrásválasztóhoz
             </button>
-            <h2 className="text-white font-bold mb-4">
+            <h2 className="text-text font-bold mb-4">
               {SOURCES.find(s => s.id === source)?.title}
             </h2>
             {source === "vcf"      && <VcfStep      onParsed={handleParsed} />}
@@ -114,10 +114,10 @@ export default function ImportWizard() {
 
         {step === "review" && (
           <div>
-            <button onClick={reset} className="text-xs text-muted hover:text-white mb-4 flex items-center gap-1">
+            <button onClick={reset} className="text-xs text-muted hover:text-text mb-4 flex items-center gap-1">
               ← Vissza
             </button>
-            <h2 className="text-white font-bold mb-3">Áttekintés és importálás</h2>
+            <h2 className="text-text font-bold mb-3">Áttekintés és importálás</h2>
             <ReviewStep candidates={candidates as never} onDone={reset} />
           </div>
         )}

@@ -69,7 +69,7 @@ export default function ReviewStep({ candidates, onDone }: ReviewStepProps) {
     return (
       <div className="text-center py-10">
         <div className="text-4xl mb-3">✅</div>
-        <p className="text-white font-bold mb-1">Importálás kész!</p>
+        <p className="text-text font-bold mb-1">Importálás kész!</p>
         <p className="text-muted text-sm mb-5">{newCount} személy hozzáadva</p>
         <Button variant="primary" onClick={onDone}>Bezárás</Button>
       </div>
@@ -80,7 +80,7 @@ export default function ReviewStep({ candidates, onDone }: ReviewStepProps) {
     <div>
       <div className="flex items-center justify-between mb-3">
         <p className="text-sm text-muted">
-          {rows.length} névjegy · {rows.filter(r => r.duplicate).length} duplikált · <span className="text-white">{newCount} új kerülne be</span>
+          {rows.length} névjegy · {rows.filter(r => r.duplicate).length} duplikált · <span className="text-text">{newCount} új kerülne be</span>
         </p>
         <button onClick={toggleAll} className="text-xs text-accent hover:underline">
           {selected.size > 0 ? "Mindent le" : "Mindent be"}
@@ -99,7 +99,7 @@ export default function ReviewStep({ candidates, onDone }: ReviewStepProps) {
               onChange={() => toggle(r.i)}
               className="accent-accent"
             />
-            <span className="text-sm text-white flex-1 truncate">{r.display_name}</span>
+            <span className="text-sm text-text flex-1 truncate">{r.display_name}</span>
             {r.duplicate && <span className="text-xs text-yellow-400">már létezik</span>}
           </div>
         ))}

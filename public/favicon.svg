@@ -1,12 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <circle cx="16" cy="16" r="5" fill="#4F7FFF"/>
-  <circle cx="6" cy="8" r="3" fill="#10B981"/>
-  <circle cx="26" cy="8" r="3" fill="#E8475F"/>
-  <circle cx="6" cy="24" r="3" fill="#F59E0B"/>
-  <circle cx="26" cy="24" r="3" fill="#8B5CF6"/>
-  <line x1="16" y1="16" x2="6" y2="8" stroke="#4F7FFF" stroke-width="1.5" opacity="0.6"/>
-  <line x1="16" y1="16" x2="26" y2="8" stroke="#4F7FFF" stroke-width="1.5" opacity="0.6"/>
-  <line x1="16" y1="16" x2="6" y2="24" stroke="#4F7FFF" stroke-width="1.5" opacity="0.6"/>
-  <line x1="16" y1="16" x2="26" y2="24" stroke="#4F7FFF" stroke-width="1.5" opacity="0.6"/>
-  <line x1="6" y1="8" x2="26" y2="8" stroke="#4F7FFF" stroke-width="1" opacity="0.3"/>
+  <circle cx="16" cy="16" r="5" fill="#374151"/>
+  <circle cx="6" cy="8" r="3" fill="#059669"/>
+  <circle cx="26" cy="8" r="3" fill="#DC2626"/>
+  <circle cx="6" cy="24" r="3" fill="#D97706"/>
+  <circle cx="26" cy="24" r="3" fill="#7C3AED"/>
+  <line x1="16" y1="16" x2="6" y2="8" stroke="#9CA3AF" stroke-width="1.5" opacity="0.7"/>
+  <line x1="16" y1="16" x2="26" y2="8" stroke="#9CA3AF" stroke-width="1.5" opacity="0.7"/>
+  <line x1="16" y1="16" x2="6" y2="24" stroke="#9CA3AF" stroke-width="1.5" opacity="0.7"/>
+  <line x1="16" y1="16" x2="26" y2="24" stroke="#9CA3AF" stroke-width="1.5" opacity="0.7"/>
 </svg>

@@ -239,7 +239,7 @@ export default function PersonDetail() {
               onChange={e => set("tagInput", e.target.value)}
               onKeyDown={e => e.key === "Enter" && addTag()}
               placeholder="Új címke..."
-              className="flex-1 bg-app border border-border rounded px-2 py-1 text-xs text-white placeholder-muted focus:outline-none focus:border-accent"
+              className="flex-1 bg-app border border-border rounded px-2 py-1 text-xs text-text placeholder-muted focus:outline-none focus:border-accent"
             />
             <Button size="sm" variant="ghost" onClick={addTag}><Plus size={12} /></Button>
           </div>

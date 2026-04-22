@@ -19,16 +19,16 @@ export default function Node({
   person, x, y, radius, isSelected, isDimmed, isPathHighlighted,
   onClick, onMouseEnter, onMouseLeave, onMouseDown
 }: NodeProps) {
-  const groupColor = person.group_key ? GROUPS[person.group_key]?.color ?? "#7A7568" : "#7A7568"
+  const groupColor = person.group_key ? GROUPS[person.group_key]?.color ?? "#6B7280" : "#6B7280"
   const roleColor  = ROLES[person.role_key]?.color
   const hasRole    = person.role_key !== "none"
 
-  const opacity = isDimmed ? 0.08 : 1
+  const opacity = isDimmed ? 0.18 : 1
 
   const ringColor = isSelected
-    ? "#EEE6CF"
+    ? "#111827"
     : isPathHighlighted
-    ? "#E09A4A"
+    ? "#D97706"
     : hasRole
     ? roleColor
     : groupColor
@@ -57,22 +57,22 @@ export default function Node({
       )}
       {/* Outer glow when path-highlighted */}
       {isPathHighlighted && !isSelected && (
-        <circle r={radius + 5} fill="#E09A4A" opacity={0.15} />
+        <circle r={radius + 5} fill="#D97706" opacity={0.18} />
       )}
 
-      {/* Main fill — deep dark with group tint */}
+      {/* Main fill — white with group color border */}
       <circle
         r={radius}
-        fill="#0E0C08"
+        fill="#FFFFFF"
         stroke={groupColor}
         strokeWidth={1}
         fillOpacity={1}
       />
-      {/* Color wash — the group color as a soft fill */}
+      {/* Color wash — the group color as a soft tint */}
       <circle
         r={radius}
         fill={groupColor}
-        fillOpacity={0.18}
+        fillOpacity={0.12}
       />
       {/* Role / selection ring */}
       <circle
@@ -80,17 +80,16 @@ export default function Node({
         fill="none"
         stroke={ringColor}
         strokeWidth={ringWidth}
-        strokeOpacity={isSelected || isPathHighlighted ? 1 : 0.85}
+        strokeOpacity={isSelected || isPathHighlighted ? 1 : 0.9}
       />
 
-      {/* Initials — serif, warm cream */}
+      {/* Initials */}
       {radius > 8 && (
         <text
           textAnchor="middle"
           dominantBaseline="central"
           fontSize={Math.max(7, radius * 0.58)}
-          fill="#EEE6CF"
-          fontFamily="Lora, Georgia, serif"
+          fill={groupColor}
           fontWeight="600"
           style={{ pointerEvents: "none", userSelect: "none" }}
         >
@@ -102,10 +101,8 @@ export default function Node({
       <text
         y={radius + 12}
         textAnchor="middle"
-        fontSize="9.5"
-        fill={isDimmed ? "#9A897015" : "#C4B898"}
-        fontFamily="Lora, Georgia, serif"
-        fontStyle="italic"
+        fontSize="10"
+        fill={isDimmed ? "#9CA3AF" : "#374151"}
         style={{ pointerEvents: "none", userSelect: "none" }}
       >
         {person.display_name.length > 15

@@ -28,7 +28,7 @@ export default function SettingsView() {
           <section className="bg-accent/10 border border-accent/30 rounded-xl p-5 flex items-center gap-4">
             <Smartphone size={20} className="text-accent flex-shrink-0" />
             <div className="flex-1">
-              <p className="text-white text-sm font-medium">Telepítés az eszközre</p>
+              <p className="text-text text-sm font-medium">Telepítés az eszközre</p>
               <p className="text-muted text-xs">Asztali ikon, offline elérés</p>
             </div>
             <Button variant="primary" size="sm" onClick={install}>Telepítés</Button>
@@ -83,7 +83,7 @@ export default function SettingsView() {
         <section className="bg-surface border border-border rounded-xl p-5 shadow-card">
           <h2 className="text-sm font-bold text-text font-serif mb-2">Billentyűparancsok</h2>
           <p className="text-xs text-muted">
-            Nyomd meg a <kbd className="border border-border rounded px-1.5 py-0.5 bg-surface-2 text-white">?</kbd> billentyűt
+            Nyomd meg a <kbd className="border border-border rounded px-1.5 py-0.5 bg-surface-2 text-text">?</kbd> billentyűt
             bármikor az összes parancs megtekintéséhez.
           </p>
         </section>

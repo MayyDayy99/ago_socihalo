@@ -52,7 +52,7 @@ export default function CsvStep({ onParsed }: CsvStepProps) {
       {step === "upload" && (
         <>
           <div className="bg-surface-2 border border-border rounded-lg p-4 text-sm text-muted space-y-1">
-            <p className="text-white font-medium">CSV / táblázat importálás</p>
+            <p className="text-text font-medium">CSV / táblázat importálás</p>
             <p className="text-xs">Az első sor legyen az oszlopfejléc (Név, Email, Telefon stb.)</p>
             <p className="text-xs">Elfogad: .csv, .txt — vesszővel vagy pontosvesszővel tagolt</p>
           </div>
@@ -68,7 +68,7 @@ export default function CsvStep({ onParsed }: CsvStepProps) {
       {step === "map" && (
         <>
           <p className="text-sm text-muted">
-            <span className="text-white">{rows.length}</span> sor találva. Párosítsd az oszlopokat:
+            <span className="text-text">{rows.length}</span> sor találva. Párosítsd az oszlopokat:
           </p>
 
           <div className="space-y-3">
@@ -99,7 +99,7 @@ export default function CsvStep({ onParsed }: CsvStepProps) {
               <div className="divide-y divide-border/30">
                 {preview.map((row, i) => (
                   <div key={i} className="flex items-center gap-3 px-3 py-1.5 text-xs">
-                    <span className="text-white font-medium flex-1 truncate">{row[mapping.name] || "—"}</span>
+                    <span className="text-text font-medium flex-1 truncate">{row[mapping.name] || "—"}</span>
                     {mapping.email && <span className="text-muted truncate max-w-[120px]">{row[mapping.email] || "—"}</span>}
                     {mapping.phone && <span className="text-muted">{row[mapping.phone] || "—"}</span>}
                   </div>

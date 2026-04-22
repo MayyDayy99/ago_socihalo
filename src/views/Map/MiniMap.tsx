@@ -37,13 +37,13 @@ export default function MiniMap({ nodes, transform, width, height }: MiniMapProp
       <svg width={W} height={H}>
         {nodes.map(n => {
           const { mx, my } = toMini(n.x ?? 0, n.y ?? 0)
-          const color = n.group_key ? GROUPS[n.group_key]?.color : "#6B7280"
-          return <circle key={n.id} cx={mx} cy={my} r={2} fill={color ?? "#6B7280"} opacity={0.7} />
+          const color = n.group_key ? GROUPS[n.group_key]?.color : "#9CA3AF"
+          return <circle key={n.id} cx={mx} cy={my} r={2} fill={color ?? "#9CA3AF"} opacity={0.8} />
         })}
         <rect
           x={vpX} y={vpY}
           width={Math.max(4, vpW)} height={Math.max(4, vpH)}
-          fill="none" stroke="#4F7FFF" strokeWidth={1} opacity={0.6}
+          fill="none" stroke="#2563EB" strokeWidth={1} opacity={0.7}
         />
       </svg>
     </div>

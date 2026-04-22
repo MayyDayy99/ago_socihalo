@@ -99,7 +99,7 @@ export default function AnalyticsView() {
                 <span className="text-xs text-muted w-4 flex-shrink-0">{i + 1}.</span>
                 <button
                   onClick={() => jumpTo(person.id)}
-                  className="text-sm text-white hover:text-accent truncate flex-1 text-left"
+                  className="text-sm text-text hover:text-accent truncate flex-1 text-left"
                 >
                   {person.display_name}
                 </button>
@@ -127,7 +127,7 @@ export default function AnalyticsView() {
                 <span className="text-xs text-muted w-4 flex-shrink-0">{i + 1}.</span>
                 <button
                   onClick={() => jumpTo(person.id)}
-                  className="text-sm text-white hover:text-accent truncate flex-1 text-left"
+                  className="text-sm text-text hover:text-accent truncate flex-1 text-left"
                 >
                   {person.display_name}
                 </button>
@@ -176,7 +176,7 @@ export default function AnalyticsView() {
               {roleDist.map(({ key, r, count }) => (
                 <div key={key} className="flex items-center gap-3">
                   <span style={{ color: r.color }} className="text-sm w-6 text-center">{r.badge}</span>
-                  <span className="text-sm text-white/80 flex-1">{r.label}</span>
+                  <span className="text-sm text-text/80 flex-1">{r.label}</span>
                   <span className="text-xs text-muted">{count} fő</span>
                 </div>
               ))}

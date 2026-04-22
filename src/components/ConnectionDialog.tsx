@@ -48,7 +48,7 @@ export default function ConnectionDialog({ fromId, toId, people, onConfirm, onCa
         transition={{ duration: 0.15 }}
         className="bg-surface border border-border rounded-xl p-6 w-96 font-mono shadow-2xl"
       >
-        <h2 className="text-white font-bold mb-1">Kapcsolat létrehozása</h2>
+        <h2 className="text-text font-bold mb-1">Kapcsolat létrehozása</h2>
         <p className="text-muted text-sm mb-5">
           {from?.display_name} ↔ {to?.display_name}
         </p>
@@ -66,7 +66,7 @@ export default function ConnectionDialog({ fromId, toId, people, onConfirm, onCa
                   color: CONNECTION_COLORS[t.value],
                 } : undefined}
                 className={`px-2 py-1.5 rounded text-xs border transition-colors ${
-                  type === t.value ? "" : "border-border text-muted hover:border-white/30 hover:text-white"
+                  type === t.value ? "" : "border-border text-muted hover:border-border-strong/30 hover:text-text"
                 }`}
               >
                 {t.label}
@@ -93,7 +93,7 @@ export default function ConnectionDialog({ fromId, toId, people, onConfirm, onCa
             value={context}
             onChange={e => setContext(e.target.value)}
             placeholder="pl. Egyetemen ismerkedtük meg"
-            className="w-full bg-app border border-border rounded px-3 py-2 text-sm text-white placeholder-muted focus:outline-none focus:border-accent font-mono"
+            className="w-full bg-app border border-border rounded px-3 py-2 text-sm text-text placeholder-muted focus:outline-none focus:border-accent font-mono"
           />
         </div>
 

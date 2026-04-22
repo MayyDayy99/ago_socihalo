@@ -37,7 +37,7 @@ export default function VcfStep({ onParsed }: VcfStepProps) {
   return (
     <div className="space-y-5">
       <p className="text-sm text-muted">
-        Bármilyen alkalmazásból exportált <span className="text-white">.vcf fájlt</span> elfogad — egy névjegy vagy ezres lista is működik.
+        Bármilyen alkalmazásból exportált <span className="text-text">.vcf fájlt</span> elfogad — egy névjegy vagy ezres lista is működik.
       </p>
 
       {/* Source guides */}
@@ -46,7 +46,7 @@ export default function VcfStep({ onParsed }: VcfStepProps) {
           <div key={s.label} className="border border-border rounded-lg overflow-hidden">
             <button
               onClick={() => setOpenGuide(openGuide === s.label ? null : s.label)}
-              className="w-full flex items-center justify-between px-3 py-2 text-sm text-white/80 hover:text-white hover:bg-surface-2 transition-colors"
+              className="w-full flex items-center justify-between px-3 py-2 text-sm text-text/80 hover:text-text hover:bg-surface-2 transition-colors"
             >
               <span>{s.label}</span>
               <span className="text-muted text-xs">{openGuide === s.label ? "▲" : "▼"}</span>

@@ -46,7 +46,7 @@ export default function CommandPalette() {
       id: "person-" + p.id,
       label: p.display_name,
       sub: p.group_key ? GROUPS[p.group_key]?.label : undefined,
-      icon: <span className="text-xs w-5 h-5 rounded-full inline-flex items-center justify-center" style={{ background: p.group_key ? GROUPS[p.group_key]?.color + "33" : "#2A2D3E", color: p.group_key ? GROUPS[p.group_key]?.color : "#6B7280" }}>{(p.display_name[0] ?? "?").toUpperCase()}</span>,
+      icon: <span className="text-xs w-5 h-5 rounded-full inline-flex items-center justify-center" style={{ background: p.group_key ? GROUPS[p.group_key]?.color + "22" : "#F3F4F6", color: p.group_key ? GROUPS[p.group_key]?.color : "#6B7280" }}>{(p.display_name[0] ?? "?").toUpperCase()}</span>,
       run: () => { setSelectedPersonId(p.id); setActiveView("map"); close() },
     }))
 

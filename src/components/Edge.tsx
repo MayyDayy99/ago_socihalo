@@ -13,13 +13,13 @@ interface EdgeProps {
 
 export default function Edge({ connection, fromX, fromY, toX, toY, isDimmed, isPathHighlighted }: EdgeProps) {
   const color = isPathHighlighted
-    ? "#C9924A"
+    ? "#D97706"
     : connection.type
-    ? (CONNECTION_COLORS[connection.type] ?? "#7A7464")
-    : "#4E4836"
+    ? (CONNECTION_COLORS[connection.type] ?? "#9CA3AF")
+    : "#D1D5DB"
 
   const isBridge  = connection.type === "bridge"
-  const opacity   = isDimmed ? 0.04 : isPathHighlighted ? 0.85 : 0.3
+  const opacity   = isDimmed ? 0.08 : isPathHighlighted ? 0.9 : 0.45
   const strokeW   = isPathHighlighted ? 2.5 : isBridge ? 1.5 : 1
 
   return (

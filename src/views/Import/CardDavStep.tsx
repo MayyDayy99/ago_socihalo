@@ -40,7 +40,7 @@ export default function CardDavStep({ onParsed }: CardDavStepProps) {
   return (
     <div className="space-y-5">
       <div className="bg-surface-2 border border-border rounded-lg p-4 text-sm space-y-1">
-        <p className="text-white font-medium">iCloud névjegyek importálása</p>
+        <p className="text-text font-medium">iCloud névjegyek importálása</p>
         <p className="text-muted text-xs">
           App-specifikus jelszó szükséges: <span className="text-accent">appleid.apple.com → Bejelentkezés és biztonság → App-specifikus jelszavak</span>
         </p>
