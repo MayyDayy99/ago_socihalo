@@ -35,6 +35,14 @@ h1, h2, h3, h4 {
   letter-spacing: -0.01em;
 }
 
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+a[href] {
+  cursor: pointer;
+}
+
+button { -webkit-user-select: none; user-select: none; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
