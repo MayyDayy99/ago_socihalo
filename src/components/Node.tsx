@@ -9,6 +9,7 @@ interface NodeProps {
   radius: number
   isSelected: boolean
   isConnectSource: boolean
+  isDropTarget: boolean
   isDimmed: boolean
   isPathHighlighted: boolean
   onClick: () => void
@@ -17,9 +18,11 @@ interface NodeProps {
   onMouseDown: (e: React.MouseEvent) => void
 }
 
+// "Person" glyph: a head circle floating above a body circle.
+// The body's center is the logical (x,y) — connection lines anchor here.
 function NodeImpl({
   person, x, y, radius,
-  isSelected, isConnectSource, isDimmed, isPathHighlighted,
+  isSelected, isConnectSource, isDropTarget, isDimmed, isPathHighlighted,
   onClick, onMouseEnter, onMouseLeave, onMouseDown,
 }: NodeProps) {
   const groupColor = person.group_key ? GROUPS[person.group_key]?.color ?? "#6B7280" : "#6B7280"
@@ -28,8 +31,17 @@ function NodeImpl({
 
   const opacity = isDimmed ? 0.22 : 1
 
+  // Body geometry
+  const bodyR = radius
+  // Head sits above the body, slightly overlapping
+  const headR = Math.max(2.5, radius * 0.36)
+  const headCY = -radius * 0.78
+
+  // Outline color priority: connect-source > drop-target > selected > path > role > group
   const ringColor = isConnectSource
     ? "#D97706"
+    : isDropTarget
+    ? "#059669"
     : isSelected
     ? "#111827"
     : isPathHighlighted
@@ -38,14 +50,20 @@ function NodeImpl({
     ? roleColor
     : groupColor
 
-  const ringWidth = isConnectSource ? 3 : isSelected ? 2.5 : isPathHighlighted ? 2 : hasRole ? 2 : 1.5
+  const ringWidth = isConnectSource || isDropTarget
+    ? 3
+    : isSelected ? 2.5 : isPathHighlighted ? 2 : hasRole ? 2 : 1.5
 
   const initials = person.display_name
-    .split(" ")
+    .split(/\s+/)
     .map((w) => w[0])
+    .filter(Boolean)
     .slice(0, 2)
     .join("")
     .toUpperCase()
+
+  // Halo radius needs to also cover the head (which extends radius * 1.14 above center)
+  const haloR = radius + 9
 
   return (
     <g
@@ -56,43 +74,62 @@ function NodeImpl({
       onMouseLeave={onMouseLeave}
       onMouseDown={onMouseDown}
     >
-      {/* Connect source halo — pulsing ring */}
+      {/* Connect-source pulsing halo (orange) */}
       {isConnectSource && (
-        <>
-          <circle r={radius + 10} fill="#D97706" opacity={0.10}>
-            <animate attributeName="r" values={`${radius + 8};${radius + 14};${radius + 8}`} dur="1.4s" repeatCount="indefinite" />
-            <animate attributeName="opacity" values="0.06;0.18;0.06" dur="1.4s" repeatCount="indefinite" />
-          </circle>
-        </>
+        <circle r={haloR} fill="#D97706" opacity={0.10}>
+          <animate attributeName="r" values={`${haloR};${haloR + 6};${haloR}`} dur="1.4s" repeatCount="indefinite" />
+          <animate attributeName="opacity" values="0.06;0.20;0.06" dur="1.4s" repeatCount="indefinite" />
+        </circle>
+      )}
+      {/* Drop-target pulsing halo (green) — shows when in connect mode and you're hovering this node */}
+      {isDropTarget && !isConnectSource && (
+        <circle r={haloR} fill="#059669" opacity={0.12}>
+          <animate attributeName="r" values={`${haloR};${haloR + 5};${haloR}`} dur="1.0s" repeatCount="indefinite" />
+          <animate attributeName="opacity" values="0.08;0.24;0.08" dur="1.0s" repeatCount="indefinite" />
+        </circle>
       )}
       {/* Selection halo */}
-      {isSelected && !isConnectSource && (
-        <circle r={radius + 7} fill={groupColor} opacity={0.14} />
+      {isSelected && !isConnectSource && !isDropTarget && (
+        <circle r={haloR} fill={groupColor} opacity={0.14} />
       )}
-      {/* Path highlight glow */}
-      {isPathHighlighted && !isSelected && !isConnectSource && (
-        <circle r={radius + 5} fill="#D97706" opacity={0.18} />
+      {/* Path-highlight glow */}
+      {isPathHighlighted && !isSelected && !isConnectSource && !isDropTarget && (
+        <circle r={haloR - 4} fill="#D97706" opacity={0.18} />
       )}
 
-      {/* Main fill — white with group color border */}
-      <circle r={radius} fill="#FFFFFF" stroke={groupColor} strokeWidth={1} />
-      {/* Color wash */}
-      <circle r={radius} fill={groupColor} fillOpacity={0.12} />
-      {/* Role / selection ring */}
+      {/* Hit-area for the whole figure (transparent — captures hover/click for both head and body) */}
+      <circle r={haloR} fill="transparent" />
+
+      {/* Head — small filled circle sitting above the body */}
       <circle
-        r={radius}
+        cx={0}
+        cy={headCY}
+        r={headR}
+        fill={groupColor}
+        stroke="#FFFFFF"
+        strokeWidth={1.25}
+      />
+
+      {/* Body — main shape that anchors edges */}
+      <circle r={bodyR} fill="#FFFFFF" stroke={groupColor} strokeWidth={1} />
+      {/* Group color wash inside body */}
+      <circle r={bodyR} fill={groupColor} fillOpacity={0.12} />
+      {/* Outer ring (selection / role / etc.) — overlays the body border */}
+      <circle
+        r={bodyR}
         fill="none"
         stroke={ringColor}
         strokeWidth={ringWidth}
-        strokeOpacity={isSelected || isPathHighlighted || isConnectSource ? 1 : 0.9}
+        strokeOpacity={isSelected || isPathHighlighted || isConnectSource || isDropTarget ? 1 : 0.9}
       />
 
-      {/* Initials */}
-      {radius > 8 && (
+      {/* Initials inside body */}
+      {radius > 7 && (
         <text
+          y={1}
           textAnchor="middle"
           dominantBaseline="central"
-          fontSize={Math.max(7, radius * 0.58)}
+          fontSize={Math.max(7, radius * 0.6)}
           fill={groupColor}
           fontWeight="600"
           style={{ pointerEvents: "none", userSelect: "none" }}
@@ -101,9 +138,9 @@ function NodeImpl({
         </text>
       )}
 
-      {/* Name label */}
+      {/* Name label below the figure */}
       <text
-        y={radius + 12}
+        y={bodyR + 12}
         textAnchor="middle"
         fontSize="10"
         fill={isDimmed ? "#9CA3AF" : "#374151"}
@@ -121,6 +158,7 @@ export default memo(NodeImpl, (prev, next) =>
   prev.radius === next.radius &&
   prev.isSelected === next.isSelected &&
   prev.isConnectSource === next.isConnectSource &&
+  prev.isDropTarget === next.isDropTarget &&
   prev.isDimmed === next.isDimmed &&
   prev.isPathHighlighted === next.isPathHighlighted &&
   prev.person === next.person &&

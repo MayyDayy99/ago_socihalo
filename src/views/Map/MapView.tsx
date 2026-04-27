@@ -354,6 +354,9 @@ export default function MapView() {
             const inPath = pathSet?.has(n.id) ?? false
             const isSel = selectedPersonId === n.id
             const isSrc = connectFromId === n.id
+            // Drop-target preview: in connect mode, hovering a node that is
+            // not the source — visual cue to "click here to link"
+            const isDrop = connectMode && !!connectFromId && hoveredId === n.id && connectFromId !== n.id
             return (
               <g key={n.id} data-node-id={n.id}>
                 <Node
@@ -362,6 +365,7 @@ export default function MapView() {
                   radius={nodeRadius(n.id)}
                   isSelected={isSel}
                   isConnectSource={isSrc}
+                  isDropTarget={isDrop}
                   isDimmed={dimmed}
                   isPathHighlighted={inPath}
                   onClick={() => handleNodeClick(n)}
