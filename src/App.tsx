@@ -158,13 +158,16 @@ function AppShell() {
           </ErrorBoundary>
         </main>
 
-        {/* Desktop side panel */}
-        {!isMobile && (
-          <AnimatePresence>
-            {selectedPersonId && <PersonDetail key={selectedPersonId} />}
-          </AnimatePresence>
-        )}
       </div>
+
+      {/* Desktop side panel — overlay (fixed-positioned), so it doesn't push the map.
+           No key on the component — switching persons re-renders content in place
+           instead of remounting the entire panel. */}
+      {!isMobile && (
+        <AnimatePresence>
+          {selectedPersonId && <PersonDetail />}
+        </AnimatePresence>
+      )}
 
       {/* Mobile bottom nav */}
       {isMobile && (
@@ -189,7 +192,7 @@ function AppShell() {
       {/* Mobile bottom sheet */}
       {isMobile && (
         <AnimatePresence>
-          {selectedPersonId && <PersonDetail key={selectedPersonId} />}
+          {selectedPersonId && <PersonDetail />}
         </AnimatePresence>
       )}
 

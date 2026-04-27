@@ -161,14 +161,14 @@ export default function PersonDetail() {
   return (
     <>
       <motion.aside
-        initial={isMobile ? { y: "100%" } : { x: 380 }}
+        initial={isMobile ? { y: "100%" } : { x: 400 }}
         animate={isMobile ? { y: 0 } : { x: 0 }}
-        exit={isMobile ? { y: "100%" } : { x: 380 }}
-        transition={{ type: "spring", stiffness: 320, damping: 32 }}
+        exit={isMobile ? { y: "100%" } : { x: 400 }}
+        transition={{ type: "spring", stiffness: 360, damping: 36 }}
         className={
           isMobile
             ? "fixed inset-x-0 bottom-0 z-40 h-[78vh] bg-surface border-t border-border-strong flex flex-col overflow-hidden rounded-t-2xl shadow-panel"
-            : "w-[360px] h-full bg-surface border-l border-border flex flex-col overflow-hidden flex-shrink-0"
+            : "fixed top-12 right-0 bottom-0 z-30 w-[380px] bg-surface border-l border-border-strong flex flex-col overflow-hidden shadow-panel"
         }
       >
         {/* Mobile drag handle */}
