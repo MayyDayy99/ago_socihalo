@@ -132,14 +132,17 @@ export default function MapView() {
     }
   }, [filteredPeople, filteredConnections])
 
-  // D3 zoom — direct DOM update + RAF-throttled state for minimap
+  // D3 zoom — direct DOM updates only (React never touches the <g> transform).
+  // This eliminates flicker AND fixes wheel-zoom-on-cursor (which only works
+  // if there is no extra transform offset competing with d3's math).
   useEffect(() => {
-    if (!svgRef.current) return
-    const svg = d3.select(svgRef.current)
+    const svgEl = svgRef.current
+    if (!svgEl) return
+    const svg = d3.select(svgEl)
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.05, 8])
       .filter(event => {
-        // Allow wheel always, only allow drag pan on background (not on a node)
+        // Allow wheel always, only allow drag pan on empty background (not on a node)
         if (event.type === "wheel") return true
         const target = event.target as Element
         return !target.closest("[data-node-id]")
@@ -147,14 +150,12 @@ export default function MapView() {
       .on("start", () => setIsPanning(true))
       .on("zoom", (e) => {
         transformRef.current = { x: e.transform.x, y: e.transform.y, k: e.transform.k }
-        // Direct DOM update — bypass React for smooth pan
-        if (gRef.current) {
-          gRef.current.setAttribute(
-            "transform",
-            `translate(${e.transform.x},${e.transform.y}) scale(${e.transform.k})`
-          )
-        }
-        // Throttle React state updates (for MiniMap) to RAF
+        // Direct DOM update — React never reconciles this attribute
+        gRef.current?.setAttribute(
+          "transform",
+          `translate(${e.transform.x},${e.transform.y}) scale(${e.transform.k})`
+        )
+        // Throttled React state for MiniMap viewport indicator
         if (transformRafRef.current !== null) return
         transformRafRef.current = requestAnimationFrame(() => {
           transformRafRef.current = null
@@ -163,6 +164,14 @@ export default function MapView() {
       })
       .on("end", () => setIsPanning(false))
     svg.call(zoom)
+
+    // Center the initial view on the SVG's center — this becomes d3's
+    // "identity translate", so all subsequent zoom math (including
+    // wheel-zoom-from-cursor-position) works correctly with no extra offset.
+    const w = svgEl.clientWidth || 800
+    const h = svgEl.clientHeight || 600
+    svg.call(zoom.transform, d3.zoomIdentity.translate(w / 2, h / 2))
+
     return () => {
       svg.on(".zoom", null)
       if (transformRafRef.current !== null) cancelAnimationFrame(transformRafRef.current)
@@ -281,9 +290,6 @@ export default function MapView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick, filteredPeople.length])
 
-  const cx = size.w / 2
-  const cy = size.h / 2
-
   const cursor = connectMode
     ? "crosshair"
     : isPanning ? "grabbing" : "grab"
@@ -314,10 +320,8 @@ export default function MapView() {
         {/* Background capture rect — anchors d3 zoom on empty space */}
         <rect width="100%" height="100%" fill="white" fillOpacity={0} pointerEvents="all" />
 
-        <g
-          ref={gRef}
-          transform={`translate(${cx + transform.x},${cy + transform.y}) scale(${transform.k})`}
-        >
+        {/* Transform is owned imperatively by d3.zoom — never set via JSX */}
+        <g ref={gRef}>
           {/* Edges */}
           {filteredConnections.map(c => {
             const from = nodePositions.get(c.from_id)
