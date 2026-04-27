@@ -12,7 +12,6 @@ import Toolbar from "./Toolbar"
 import MiniMap from "./MiniMap"
 import ConnectionDialog from "../../components/ConnectionDialog"
 import ConnectModeBanner from "./ConnectModeBanner"
-import { EmptyState } from "../../components/ui/EmptyState"
 import { Button } from "../../components/ui/Button"
 import { toast } from "../../components/ui/Toast"
 import { UserPlus } from "lucide-react"
@@ -285,44 +284,12 @@ export default function MapView() {
   const cx = size.w / 2
   const cy = size.h / 2
 
-  // ── Loading + empty states ────────────────────────────
-  if (peopleLoading) {
-    return (
-      <div className="relative w-full h-full bg-app overflow-hidden flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-7 h-7 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-muted text-sm">Hálózat betöltése…</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (people.length === 0) {
-    return (
-      <div className="relative w-full h-full bg-app overflow-hidden">
-        <Toolbar />
-        <EmptyState
-          icon="⬡"
-          title="Üres hálózat"
-          sub="Adj hozzá személyeket, vagy importálj névjegyeket egy meglévő forrásból."
-          action={
-            <div className="flex gap-2">
-              <Button variant="primary" size="sm" onClick={() => setCreatePersonOpen(true)}>
-                <UserPlus size={13} /> Új személy
-              </Button>
-              <Button variant="secondary" size="sm" onClick={() => setActiveView("import")}>
-                Importálás
-              </Button>
-            </div>
-          }
-        />
-      </div>
-    )
-  }
-
   const cursor = connectMode
-    ? (connectFromId ? "crosshair" : "crosshair")
+    ? "crosshair"
     : isPanning ? "grabbing" : "grab"
+
+  const showLoading = peopleLoading
+  const showEmpty   = !peopleLoading && people.length === 0
 
   return (
     <div className="relative w-full h-full bg-app map-canvas overflow-hidden">
@@ -335,6 +302,8 @@ export default function MapView() {
         onCancel={() => { setConnectMode(false); setConnectFromId(null) }}
       />
 
+      {/* SVG is ALWAYS rendered so the d3.zoom useEffect can attach on mount.
+          Loading/empty states are overlays on top. */}
       <svg
         ref={svgRef}
         width="100%"
@@ -402,21 +371,54 @@ export default function MapView() {
         </g>
       </svg>
 
-      <Legend />
-      <MiniMap
-        nodes={nodesRef.current}
-        transform={transform}
-        width={size.w}
-        height={size.h}
-      />
+      {!showLoading && !showEmpty && (
+        <>
+          <Legend />
+          <MiniMap
+            nodes={nodesRef.current}
+            transform={transform}
+            width={size.w}
+            height={size.h}
+          />
 
-      {/* Stats footer */}
-      <div className="absolute bottom-4 right-4 text-xs text-muted bg-surface/80 backdrop-blur border border-border rounded px-2.5 py-1 pointer-events-none">
-        {filteredPeople.length} személy · {filteredConnections.length} kapcsolat
-        {filteredPeople.length !== people.length && (
-          <span className="ml-1 text-accent">(szűrve)</span>
-        )}
-      </div>
+          {/* Stats footer */}
+          <div className="absolute bottom-4 right-4 text-xs text-muted bg-surface/80 backdrop-blur border border-border rounded px-2.5 py-1 pointer-events-none">
+            {filteredPeople.length} személy · {filteredConnections.length} kapcsolat
+            {filteredPeople.length !== people.length && (
+              <span className="ml-1 text-accent">(szűrve)</span>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Loading overlay */}
+      {showLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-app/80 backdrop-blur-sm pointer-events-none z-30">
+          <div className="text-center">
+            <div className="w-7 h-7 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-muted text-sm">Hálózat betöltése…</p>
+          </div>
+        </div>
+      )}
+
+      {/* Empty overlay — clickable, sits over the (still-attached) SVG */}
+      {showEmpty && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 z-30">
+          <span className="text-4xl mb-4 opacity-30 select-none">⬡</span>
+          <p className="text-text font-medium mb-1">Üres hálózat</p>
+          <p className="text-muted text-sm mb-5 max-w-xs">
+            Adj hozzá személyeket, vagy importálj névjegyeket egy meglévő forrásból.
+          </p>
+          <div className="flex gap-2">
+            <Button variant="primary" size="sm" onClick={() => setCreatePersonOpen(true)}>
+              <UserPlus size={13} /> Új személy
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setActiveView("import")}>
+              Importálás
+            </Button>
+          </div>
+        </div>
+      )}
 
       {pendingConn && (
         <ConnectionDialog
