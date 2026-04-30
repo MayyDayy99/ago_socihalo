@@ -354,8 +354,11 @@ function PersonAvatar({
 }
 
 // ── 3D connection beam ─────────────────────────────────────
+const BEAM_POINTS = 28
+const BEAM_HEIGHT = 0.85   // chest-center anchor
+
 function ConnectionBeam({
-  connection, fromPos, toPos, color, dimmed, selected,
+  connection, fromPos, toPos, color, dimmed, selected, dragOverridesRef,
 }: {
   connection: Connection
   fromPos: [number, number, number]
@@ -363,22 +366,52 @@ function ConnectionBeam({
   color: string
   dimmed: boolean
   selected: boolean
+  dragOverridesRef: React.MutableRefObject<Map<string, [number, number, number]>>
 }) {
-  const points = useMemo(() => {
-    // Beams anchor at chest center (~0.85), not at the head — keeps the 'light bridge' arc
-    // visually clear of the figure's head and reads as a connection between people, not heads.
-    const a = new THREE.Vector3(fromPos[0], 0.85, fromPos[2])
-    const b = new THREE.Vector3(toPos[0], 0.85, toPos[2])
-    const mid = a.clone().lerp(b, 0.5)
-    mid.y += Math.max(0.4, a.distanceTo(b) * 0.18)
-    const curve = new THREE.QuadraticBezierCurve3(a, mid, b)
-    return curve.getPoints(30)
-  }, [fromPos, toPos])
+  // Pre-allocated buffers we mutate every frame — avoids per-tick allocations.
+  const lineRef = useRef<{ geometry: THREE.BufferGeometry } | null>(null)
+  const pointsRef = useRef<THREE.Vector3[]>(
+    Array.from({ length: BEAM_POINTS }, () => new THREE.Vector3())
+  )
+  const a = useRef(new THREE.Vector3())
+  const b = useRef(new THREE.Vector3())
+  const mid = useRef(new THREE.Vector3())
+  const curve = useRef(new THREE.QuadraticBezierCurve3())
+
+  // Each frame, read live positions (drag override > static prop) and rewrite the curve.
+  useFrame(() => {
+    const ovFrom = dragOverridesRef.current.get(connection.from_id)
+    const ovTo   = dragOverridesRef.current.get(connection.to_id)
+    const fx = ovFrom ? ovFrom[0] : fromPos[0]
+    const fz = ovFrom ? ovFrom[2] : fromPos[2]
+    const tx = ovTo   ? ovTo[0]   : toPos[0]
+    const tz = ovTo   ? ovTo[2]   : toPos[2]
+
+    a.current.set(fx, BEAM_HEIGHT, fz)
+    b.current.set(tx, BEAM_HEIGHT, tz)
+    mid.current.copy(a.current).lerp(b.current, 0.5)
+    const dist = a.current.distanceTo(b.current)
+    mid.current.y += Math.max(0.4, dist * 0.18)
+
+    curve.current.v0 = a.current
+    curve.current.v1 = mid.current
+    curve.current.v2 = b.current
+    const pts = pointsRef.current
+    for (let i = 0; i < BEAM_POINTS; i++) {
+      curve.current.getPoint(i / (BEAM_POINTS - 1), pts[i])
+    }
+    const line = lineRef.current
+    if (line && line.geometry) {
+      line.geometry.setFromPoints(pts)
+      line.geometry.computeBoundingSphere()
+    }
+  })
 
   const strength = connection.strength ?? 3
   return (
     <Line
-      points={points}
+      ref={lineRef as never}
+      points={pointsRef.current}
       color={color}
       lineWidth={selected ? Math.max(2.2, strength * 0.8) : 1.4}
       transparent
@@ -461,6 +494,7 @@ function Scene({
             color={color}
             dimmed={dimmed}
             selected={isAdjacentToSelected}
+            dragOverridesRef={dragOverridesRef}
           />
         )
       })}
