@@ -55,8 +55,11 @@ type PersonWithPos = Person & { pos: [number, number, number]; idHash: number }
 const WORLD_SCALE = 1 / 80   // pixel → world (matches /80 in computePositions)
 const LONG_PRESS_MS = 400
 const EMPTY_CONNECTIONS: Connection[] = []
+const DAY_MS = 86_400_000
 const LIFE_WANDER_RADIUS = 0.16
 const LIFE_MAX_STEP = 0.58
+const PERSON_EVENT_SECONDS = 4.5
+const CONNECTION_EVENT_SECONDS = 4.2
 
 type LivePersonMotion = {
   position: THREE.Vector3
@@ -66,6 +69,13 @@ type LivePersonMotion = {
 }
 
 type LiveMotionRef = React.MutableRefObject<Map<string, LivePersonMotion>>
+
+type SceneEventState = {
+  people: Map<string, number>
+  connections: Map<string, number>
+}
+
+type SceneEventRef = React.MutableRefObject<SceneEventState>
 
 // Refs we need from inside the Canvas, exposed back to the outer drag handler
 type SceneRefs = {
@@ -127,18 +137,51 @@ function easeInOut01(v: number): number {
   return x * x * (3 - 2 * x)
 }
 
+function ageInDays(value?: string | null): number {
+  if (!value) return Number.POSITIVE_INFINITY
+  const time = new Date(value).getTime()
+  if (!Number.isFinite(time)) return Number.POSITIVE_INFINITY
+  return Math.max(0, (Date.now() - time) / DAY_MS)
+}
+
+function personLifeProfile(person: Person): { energy: number; dormancy: number; recency: number } {
+  const lastContactDays = ageInDays(person.last_contact ?? person.updated_at ?? person.created_at)
+  const createdDays = ageInDays(person.created_at)
+  const strength = clamp01(((person.strength ?? 3) - 1) / 4)
+  const recency = clamp01(1 - lastContactDays / 45)
+  const newness = clamp01(1 - createdDays / 10)
+  const roleBoost = person.role_key === "connector" || person.role_key === "key" ? 0.16 : 0
+  const dormancy = clamp01((lastContactDays - 75) / 105)
+  const energy = clamp01(0.28 + strength * 0.36 + recency * 0.28 + newness * 0.16 + roleBoost - dormancy * 0.18)
+  return { energy, dormancy, recency }
+}
+
+function connectionLifeProfile(connection: Connection): { freshness: number; strength: number } {
+  const strength = clamp01(((connection.strength ?? 3) - 1) / 4)
+  const freshness = clamp01(1 - ageInDays(connection.created_at) / 7)
+  return { freshness, strength }
+}
+
+function eventPulse(startedAt: number | undefined, now: number, duration: number): number {
+  if (!startedAt) return 0
+  const progress = (now - startedAt) / duration
+  if (progress < 0 || progress > 1) return 0
+  return Math.sin(progress * Math.PI) * (1 - progress * 0.12)
+}
+
 function connectionActivity(connection: Connection, time: number): { amount: number; progress: number } {
   const strength = connection.strength ?? 3
+  const profile = connectionLifeProfile(connection)
   const seed = hash(connection.id)
-  const period = 28 + seed * 22 - strength * 1.4
-  const duration = 2.8 + strength * 0.34
+  const period = 30 + seed * 24 - strength * 1.2 - profile.freshness * 4
+  const duration = 2.6 + strength * 0.32 + profile.freshness * 0.7
   const local = (time + seed * period) % period
   if (local > duration) return { amount: 0, progress: 0 }
 
   const progress = local / duration
   const fade = Math.min(local / 0.75, (duration - local) / 0.75, 1)
   return {
-    amount: clamp01(fade) * Math.sin(progress * Math.PI),
+    amount: clamp01(clamp01(fade) * Math.sin(progress * Math.PI) * (0.68 + profile.strength * 0.24 + profile.freshness * 0.24)),
     progress,
   }
 }
@@ -152,14 +195,16 @@ function computeLivingTarget(
 ): { target: [number, number, number]; yaw: number; interaction: number } {
   const base = person.pos
   const phase = person.idHash * Math.PI * 2
+  const profile = personLifeProfile(person)
   const anchorScale = isAnchoredByUi ? 0.35 : 1
-  const wanderRadius = LIFE_WANDER_RADIUS * anchorScale * (0.65 + person.idHash * 0.55)
+  const lifeScale = (0.62 + profile.energy * 0.85) * (1 - profile.dormancy * 0.48)
+  const wanderRadius = LIFE_WANDER_RADIUS * anchorScale * (0.65 + person.idHash * 0.55) * lifeScale
   const wanderX =
-    Math.sin(time * (0.16 + person.idHash * 0.05) + phase) * wanderRadius +
-    Math.sin(time * 0.07 + phase * 2.3) * wanderRadius * 0.55
+    Math.sin(time * (0.14 + profile.energy * 0.06 + person.idHash * 0.05) + phase) * wanderRadius +
+    Math.sin(time * (0.055 + profile.recency * 0.025) + phase * 2.3) * wanderRadius * 0.55
   const wanderZ =
-    Math.cos(time * (0.13 + person.idHash * 0.04) + phase * 1.7) * wanderRadius +
-    Math.sin(time * 0.05 + phase * 0.8) * wanderRadius * 0.45
+    Math.cos(time * (0.12 + profile.energy * 0.05 + person.idHash * 0.04) + phase * 1.7) * wanderRadius +
+    Math.sin(time * (0.045 + profile.recency * 0.02) + phase * 0.8) * wanderRadius * 0.45
 
   let bestAmount = 0
   let bestStrength = 0
@@ -182,7 +227,7 @@ function computeLivingTarget(
   }
 
   if (!partnerPos) {
-    const idleYaw = Math.sin(time * 0.18 + phase) * 0.28
+    const idleYaw = Math.sin(time * (0.13 + profile.energy * 0.08) + phase) * (0.16 + profile.energy * 0.18)
     return {
       target: [base[0] + wanderX, 0, base[2] + wanderZ],
       yaw: idleYaw,
@@ -195,7 +240,7 @@ function computeLivingTarget(
   const dist = Math.max(0.001, Math.hypot(dx, dz))
   const ux = dx / dist
   const uz = dz / dist
-  const reach = Math.min(LIFE_MAX_STEP, 0.16 + bestStrength * 0.085)
+  const reach = Math.min(LIFE_MAX_STEP, 0.14 + bestStrength * 0.08 + profile.energy * 0.08)
   const step = reach * bestAmount * anchorScale
   const wanderBlend = 1 - bestAmount * 0.75
 
@@ -227,7 +272,7 @@ function computeLivingTarget(
 
 function PersonAvatar({
   person, selected, dimmed, isSource, hovered, pressed, personConnections,
-  basePositionMap, dragOverridesRef, liveMotionRef, onSelect, onPointerDown,
+  basePositionMap, dragOverridesRef, liveMotionRef, sceneEventsRef, onSelect, onPointerDown,
 }: {
   person: PersonWithPos
   selected: boolean
@@ -239,6 +284,7 @@ function PersonAvatar({
   basePositionMap: Map<string, [number, number, number]>
   dragOverridesRef: React.MutableRefObject<Map<string, [number, number, number]>>
   liveMotionRef: LiveMotionRef
+  sceneEventsRef: SceneEventRef
   onSelect: (e: ThreeEvent<MouseEvent>) => void
   onPointerDown: (e: ThreeEvent<PointerEvent>) => void
 }) {
@@ -246,6 +292,7 @@ function PersonAvatar({
   const groupRef = useRef<THREE.Group>(null)
   const scaleRef = useRef<THREE.Group>(null)
   const ringRef  = useRef<THREE.Mesh>(null)
+  const ringMaterialRef = useRef<THREE.MeshBasicMaterial>(null)
   const leftFootRef = useRef<THREE.Mesh>(null)
   const rightFootRef = useRef<THREE.Mesh>(null)
   const leftLegRef = useRef<THREE.Mesh>(null)
@@ -273,7 +320,9 @@ function PersonAvatar({
   // Torso uses the group color for in-app identity (matches 2D node border color)
   const torsoColor = person.group_key ? GROUPS[person.group_key]?.color ?? "#7ED3FF" : "#7ED3FF"
 
-  const opacity = dimmed ? 0.32 : 1
+  const initialProfile = personLifeProfile(person)
+  const baseOpacity = clamp01(0.58 + initialProfile.energy * 0.42 - initialProfile.dormancy * 0.22 - (person.archived ? 0.28 : 0))
+  const opacity = dimmed ? Math.min(0.32, baseOpacity * 0.55) : baseOpacity
   const ringColor =
     isSource  ? "#D97706" :
     selected  ? "#B7ECFF" :   // spec selection-glow cyan
@@ -283,9 +332,12 @@ function PersonAvatar({
   // Per-frame: living target, procedural walk cycle, scale tween, pulsing ring
   useFrame(({ clock }, delta) => {
     const t = clock.getElapsedTime()
+    const wallTime = performance.now() / 1000
     const dt = Math.min(delta, 0.05)
     const dragging = dragOverridesRef.current.has(person.id)
     const override = dragOverridesRef.current.get(person.id)
+    const lifeProfile = personLifeProfile(person)
+    const arrival = eventPulse(sceneEventsRef.current.people.get(person.id), wallTime, PERSON_EVENT_SECONDS)
     const living = computeLivingTarget(
       person,
       personConnections,
@@ -303,9 +355,9 @@ function PersonAvatar({
     }
 
     const frameMove = currentPosRef.current.distanceTo(lastPosRef.current)
-    const moving = dragging ? 0 : clamp01((frameMove / Math.max(dt, 0.016)) * 1.35)
-    const interaction = dragging ? 0 : living.interaction
-    stepPhaseRef.current += dt * (2.4 + moving * 7.5) * (0.18 + moving)
+    const moving = dragging ? 0 : clamp01((frameMove / Math.max(dt, 0.016)) * (1.12 + lifeProfile.energy * 0.48) + arrival * 0.12)
+    const interaction = dragging ? 0 : Math.max(living.interaction, arrival * 0.52)
+    stepPhaseRef.current += dt * (2.05 + lifeProfile.energy * 1.25 + moving * 7.5) * (0.16 + moving)
 
     if (rootRef.current) {
       rootRef.current.position.copy(currentPosRef.current)
@@ -334,13 +386,15 @@ function PersonAvatar({
     }
 
     if (groupRef.current) {
-      const idleBob = Math.sin(t * 1.35 + walkPhase) * 0.018
+      const calm = 1 - lifeProfile.dormancy * 0.42
+      const idleBob = Math.sin(t * (1.05 + lifeProfile.energy * 0.55) + walkPhase) * 0.018 * (0.55 + lifeProfile.energy * 0.75) * calm
       const walkBob = Math.max(0, Math.sin(stepPhaseRef.current * 2)) * 0.035 * moving
       const talkBob = Math.sin(t * 3.1 + walkPhase) * 0.012 * interaction
-      groupRef.current.position.y = dragging ? 0 : idleBob + walkBob + talkBob
+      const arrivalLift = arrival * 0.075
+      groupRef.current.position.y = dragging ? 0 : idleBob + walkBob + talkBob + arrivalLift
     }
     if (scaleRef.current) {
-      const target = pressed || selected ? 1.08 : hovered ? 1.02 : 1.0
+      const target = (pressed || selected ? 1.08 : hovered ? 1.02 : 1.0) + arrival * 0.16 + interaction * 0.035
       const cur = scaleRef.current.scale.x
       const next = THREE.MathUtils.lerp(cur, target, 0.18)
       scaleRef.current.scale.setScalar(next)
@@ -395,13 +449,19 @@ function PersonAvatar({
       hairRef.current.rotation.copy(headRef.current.rotation)
     }
 
-    if (ringRef.current && (selected || isSource || pressed)) {
-      const s = 1 + Math.sin(t * 2.4) * 0.05
+    if (ringRef.current && (selected || isSource || pressed || interaction > 0.04 || arrival > 0.02)) {
+      const attention = Math.max(selected || isSource || pressed ? 1 : 0, interaction, arrival)
+      const s = 1 + Math.sin(t * (2.2 + attention * 1.3)) * 0.045 * attention + attention * 0.055
       ringRef.current.scale.x = s
       ringRef.current.scale.z = s
     } else if (ringRef.current) {
       ringRef.current.scale.x = 1
       ringRef.current.scale.z = 1
+    }
+    if (ringMaterialRef.current) {
+      const attention = Math.max(isSource ? 0.95 : 0, selected ? 0.85 : 0, pressed ? 0.7 : 0, hovered ? 0.45 : 0, interaction * 0.72, arrival)
+      const targetOpacity = dimmed ? Math.min(0.18, 0.08 + attention * 0.1) : clamp01(0.12 + attention * 0.58)
+      ringMaterialRef.current.opacity = THREE.MathUtils.lerp(ringMaterialRef.current.opacity, targetOpacity, 0.2)
     }
     lastPosRef.current.copy(currentPosRef.current)
   })
@@ -416,6 +476,7 @@ function PersonAvatar({
             <mesh ref={ringRef} position={[0, 0.005, 0]} rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[0.30, 0.42, 64]} />
               <meshBasicMaterial
+                ref={ringMaterialRef}
                 color={ringColor}
                 transparent
                 opacity={isSource ? 0.75 : selected ? 0.6 : hovered ? 0.4 : 0.22 * opacity}
@@ -578,7 +639,7 @@ const BEAM_POINTS = 28
 const BEAM_HEIGHT = 0.85   // chest-center anchor
 
 function ConnectionBeam({
-  connection, fromPos, toPos, color, dimmed, selected, dragOverridesRef, liveMotionRef,
+  connection, fromPos, toPos, color, dimmed, selected, dragOverridesRef, liveMotionRef, sceneEventsRef,
 }: {
   connection: Connection
   fromPos: [number, number, number]
@@ -588,6 +649,7 @@ function ConnectionBeam({
   selected: boolean
   dragOverridesRef: React.MutableRefObject<Map<string, [number, number, number]>>
   liveMotionRef: LiveMotionRef
+  sceneEventsRef: SceneEventRef
 }) {
   // drei's <Line> wraps Line2 (LineGeometry under the hood). LineGeometry expects flat
   // positions via setPositions(Float32Array) — using BufferGeometry.setFromPoints silently
@@ -605,6 +667,7 @@ function ConnectionBeam({
 
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime()
+    const wallTime = performance.now() / 1000
     const ovFrom = dragOverridesRef.current.get(connection.from_id)
     const ovTo   = dragOverridesRef.current.get(connection.to_id)
     const liveFrom = liveMotionRef.current.get(connection.from_id)?.position
@@ -638,19 +701,24 @@ function ConnectionBeam({
       // For dashed lines the line distances need recomputing
       if (typeof line.computeLineDistances === "function") line.computeLineDistances()
       const activity = connectionActivity(connection, t)
+      const arrival = eventPulse(sceneEventsRef.current.connections.get(connection.id), wallTime, CONNECTION_EVENT_SECONDS)
+      const pulse = Math.max(activity.amount, arrival)
+      const pulseProgress = arrival > activity.amount
+        ? easeInOut01((wallTime - (sceneEventsRef.current.connections.get(connection.id) ?? wallTime)) / CONNECTION_EVENT_SECONDS)
+        : activity.progress
       if (line.material) {
         line.material.opacity = dimmed
           ? 0.08
           : selected
             ? 0.95
-            : 0.42 + activity.amount * 0.34
+            : 0.42 + pulse * 0.38
       }
       if (sparkRef.current && sparkMaterialRef.current) {
-        if (activity.amount > 0.02 && !dimmed) {
-          curve.current.getPoint(easeInOut01(activity.progress), tmp.current)
+        if (pulse > 0.02 && !dimmed) {
+          curve.current.getPoint(easeInOut01(pulseProgress), tmp.current)
           sparkRef.current.position.copy(tmp.current)
-          sparkRef.current.scale.setScalar(0.7 + activity.amount * 1.7)
-          sparkMaterialRef.current.opacity = activity.amount * (selected ? 0.95 : 0.72)
+          sparkRef.current.scale.setScalar(0.7 + pulse * 1.9 + arrival * 0.55)
+          sparkMaterialRef.current.opacity = pulse * (selected ? 0.95 : 0.76)
         } else {
           sparkMaterialRef.current.opacity = 0
         }
@@ -692,7 +760,7 @@ function ConnectionBeam({
 // ── Main scene ─────────────────────────────────────────────
 function Scene({
   people, connections, onPersonClick, onPersonPointerDown, hoveredPersonId, setHovered,
-  pressedId, dragOverridesRef, liveMotionRef, controlsRef, sceneRefsRef,
+  pressedId, dragOverridesRef, liveMotionRef, sceneEventsRef, controlsRef, sceneRefsRef,
 }: {
   people: PersonWithPos[]
   connections: Connection[]
@@ -703,6 +771,7 @@ function Scene({
   pressedId: string | null
   dragOverridesRef: React.MutableRefObject<Map<string, [number, number, number]>>
   liveMotionRef: LiveMotionRef
+  sceneEventsRef: SceneEventRef
   controlsRef: React.MutableRefObject<OrbitControlsImpl | null>
   sceneRefsRef: React.MutableRefObject<SceneRefs | null>
 }) {
@@ -778,6 +847,7 @@ function Scene({
             selected={isAdjacentToSelected}
             dragOverridesRef={dragOverridesRef}
             liveMotionRef={liveMotionRef}
+            sceneEventsRef={sceneEventsRef}
           />
         )
       })}
@@ -810,6 +880,7 @@ function Scene({
               basePositionMap={basePositionMap}
               dragOverridesRef={dragOverridesRef}
               liveMotionRef={liveMotionRef}
+              sceneEventsRef={sceneEventsRef}
               onSelect={(e) => { e.stopPropagation(); onPersonClick(p.id) }}
               onPointerDown={(e) => { e.stopPropagation(); onPersonPointerDown(p.id, e) }}
             />
@@ -842,7 +913,7 @@ function Scene({
 // ── Top-level Map3DView component ──────────────────────────
 export default function Map3DView() {
   const { data: people = [], isLoading } = usePeople()
-  const { data: connections = [] } = useConnections()
+  const { data: connections = [], isLoading: connectionsLoading } = useConnections()
   const updatePerson = useUpdatePerson()
   const createConn   = useCreateConnection()
   const {
@@ -864,9 +935,60 @@ export default function Map3DView() {
   // Bypasses React reconciliation so dragging stays smooth.
   const dragOverridesRef = useRef<Map<string, [number, number, number]>>(new Map())
   const liveMotionRef    = useRef<Map<string, LivePersonMotion>>(new Map())
+  const sceneEventsRef   = useRef<SceneEventState>({ people: new Map(), connections: new Map() })
+  const knownPeopleRef   = useRef<Set<string>>(new Set())
+  const knownConnectionsRef = useRef<Set<string>>(new Set())
+  const peopleEventsReadyRef = useRef(false)
+  const connectionEventsReadyRef = useRef(false)
   const dragMovedRef     = useRef(false)
   // Track pointer-down position so we can distinguish a tap (close panel) from a pan (don't)
   const pointerDownRef   = useRef<{ x: number; y: number } | null>(null)
+
+  useEffect(() => {
+    if (isLoading) return
+    const now = performance.now() / 1000
+    const nextIds = new Set(people.map(person => person.id))
+
+    if (peopleEventsReadyRef.current) {
+      for (const id of nextIds) {
+        if (!knownPeopleRef.current.has(id)) {
+          sceneEventsRef.current.people.set(id, now)
+        }
+      }
+    } else {
+      peopleEventsReadyRef.current = true
+    }
+
+    for (const id of sceneEventsRef.current.people.keys()) {
+      if (!nextIds.has(id) || now - (sceneEventsRef.current.people.get(id) ?? now) > PERSON_EVENT_SECONDS + 1) {
+        sceneEventsRef.current.people.delete(id)
+      }
+    }
+    knownPeopleRef.current = nextIds
+  }, [people, isLoading])
+
+  useEffect(() => {
+    if (connectionsLoading) return
+    const now = performance.now() / 1000
+    const nextIds = new Set(connections.map(connection => connection.id))
+
+    if (connectionEventsReadyRef.current) {
+      for (const id of nextIds) {
+        if (!knownConnectionsRef.current.has(id)) {
+          sceneEventsRef.current.connections.set(id, now)
+        }
+      }
+    } else {
+      connectionEventsReadyRef.current = true
+    }
+
+    for (const id of sceneEventsRef.current.connections.keys()) {
+      if (!nextIds.has(id) || now - (sceneEventsRef.current.connections.get(id) ?? now) > CONNECTION_EVENT_SECONDS + 1) {
+        sceneEventsRef.current.connections.delete(id)
+      }
+    }
+    knownConnectionsRef.current = nextIds
+  }, [connections, connectionsLoading])
 
   const onPersonClick = useCallback((personId: string) => {
     // Suppress click immediately following a real drag (click fires on pointerup)
@@ -1035,6 +1157,7 @@ export default function Map3DView() {
             pressedId={pressedId}
             dragOverridesRef={dragOverridesRef}
             liveMotionRef={liveMotionRef}
+            sceneEventsRef={sceneEventsRef}
             controlsRef={controlsRef}
             sceneRefsRef={sceneRefsRef}
           />

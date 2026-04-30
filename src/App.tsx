@@ -5,6 +5,7 @@ import type { Session } from "@supabase/supabase-js"
 import { supabase } from "./lib/supabase"
 import { useAppStore } from "./store/useAppStore"
 import { useIsMobile } from "./hooks/useIsMobile"
+import { useNetworkRealtime } from "./hooks/useNetworkRealtime"
 
 import MagicLinkScreen   from "./views/Auth/MagicLinkScreen"
 import MapView           from "./views/Map/MapView"
@@ -57,6 +58,8 @@ function NexusLogo({ size = 18 }: { size?: number }) {
 }
 
 function AppShell() {
+  useNetworkRealtime()
+
   const {
     activeView, setActiveView,
     mapMode,
