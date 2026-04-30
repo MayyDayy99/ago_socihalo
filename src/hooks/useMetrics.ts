@@ -5,7 +5,6 @@ import type { Person, Connection } from "../store/types"
 export function useMetrics(people: Person[], connections: Connection[]) {
   return useMemo(
     () => computeMetrics(people, connections),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [people.length, connections.length]
+    [people, connections]
   )
 }

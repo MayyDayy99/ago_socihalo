@@ -21,16 +21,23 @@ export function useCreateConnection() {
   return useMutation({
     mutationFn: async (conn: { from_id: string; to_id: string; type?: string; strength?: number; context?: string }) => {
       const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error("Nincs bejelentkezett felhasználó")
+      if (conn.from_id === conn.to_id) throw new Error("Egy személy nem kapcsolható önmagához")
+
+      const [from_id, to_id] = [conn.from_id, conn.to_id].sort()
       const { data, error } = await supabase
         .from("connections")
         .insert({
           ...conn,
-          user_id: user!.id,
+          from_id,
+          to_id,
+          user_id: user.id,
           directed: false,
           confidence: "confirmed",
         })
         .select()
         .single()
+      if (error?.code === "23505") throw new Error("Ez a kapcsolat már létezik")
       if (error) throw error
       return data as Connection
     },

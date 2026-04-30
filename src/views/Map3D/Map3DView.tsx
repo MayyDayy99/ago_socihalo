@@ -54,6 +54,18 @@ type PersonWithPos = Person & { pos: [number, number, number]; idHash: number }
 // in lock-step on relative distance + direction.
 const WORLD_SCALE = 1 / 80   // pixel → world (matches /80 in computePositions)
 const LONG_PRESS_MS = 400
+const EMPTY_CONNECTIONS: Connection[] = []
+const LIFE_WANDER_RADIUS = 0.16
+const LIFE_MAX_STEP = 0.58
+
+type LivePersonMotion = {
+  position: THREE.Vector3
+  moving: number
+  interaction: number
+  yaw: number
+}
+
+type LiveMotionRef = React.MutableRefObject<Map<string, LivePersonMotion>>
 
 // Refs we need from inside the Canvas, exposed back to the outer drag handler
 type SceneRefs = {
@@ -102,6 +114,102 @@ function computePositions(people: Person[]): PersonWithPos[] {
   return out
 }
 
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v))
+}
+
+function shortestAngleDelta(from: number, to: number): number {
+  return Math.atan2(Math.sin(to - from), Math.cos(to - from))
+}
+
+function easeInOut01(v: number): number {
+  const x = clamp01(v)
+  return x * x * (3 - 2 * x)
+}
+
+function connectionActivity(connection: Connection, time: number): { amount: number; progress: number } {
+  const strength = connection.strength ?? 3
+  const seed = hash(connection.id)
+  const period = 28 + seed * 22 - strength * 1.4
+  const duration = 2.8 + strength * 0.34
+  const local = (time + seed * period) % period
+  if (local > duration) return { amount: 0, progress: 0 }
+
+  const progress = local / duration
+  const fade = Math.min(local / 0.75, (duration - local) / 0.75, 1)
+  return {
+    amount: clamp01(fade) * Math.sin(progress * Math.PI),
+    progress,
+  }
+}
+
+function computeLivingTarget(
+  person: PersonWithPos,
+  personConnections: Connection[],
+  basePositionMap: Map<string, [number, number, number]>,
+  time: number,
+  isAnchoredByUi: boolean
+): { target: [number, number, number]; yaw: number; interaction: number } {
+  const base = person.pos
+  const phase = person.idHash * Math.PI * 2
+  const anchorScale = isAnchoredByUi ? 0.35 : 1
+  const wanderRadius = LIFE_WANDER_RADIUS * anchorScale * (0.65 + person.idHash * 0.55)
+  const wanderX =
+    Math.sin(time * (0.16 + person.idHash * 0.05) + phase) * wanderRadius +
+    Math.sin(time * 0.07 + phase * 2.3) * wanderRadius * 0.55
+  const wanderZ =
+    Math.cos(time * (0.13 + person.idHash * 0.04) + phase * 1.7) * wanderRadius +
+    Math.sin(time * 0.05 + phase * 0.8) * wanderRadius * 0.45
+
+  let bestAmount = 0
+  let bestStrength = 0
+  let partnerPos: [number, number, number] | null = null
+
+  for (const connection of personConnections) {
+    const activity = connectionActivity(connection, time)
+    if (activity.amount <= 0.02) continue
+    const strength = connection.strength ?? 3
+    const score = activity.amount * (0.75 + strength * 0.16)
+    if (score <= bestAmount * (0.75 + bestStrength * 0.16)) continue
+
+    const partnerId = connection.from_id === person.id ? connection.to_id : connection.from_id
+    const nextPartnerPos = basePositionMap.get(partnerId)
+    if (!nextPartnerPos) continue
+
+    bestAmount = activity.amount
+    bestStrength = strength
+    partnerPos = nextPartnerPos
+  }
+
+  if (!partnerPos) {
+    const idleYaw = Math.sin(time * 0.18 + phase) * 0.28
+    return {
+      target: [base[0] + wanderX, 0, base[2] + wanderZ],
+      yaw: idleYaw,
+      interaction: 0,
+    }
+  }
+
+  const dx = partnerPos[0] - base[0]
+  const dz = partnerPos[2] - base[2]
+  const dist = Math.max(0.001, Math.hypot(dx, dz))
+  const ux = dx / dist
+  const uz = dz / dist
+  const reach = Math.min(LIFE_MAX_STEP, 0.16 + bestStrength * 0.085)
+  const step = reach * bestAmount * anchorScale
+  const wanderBlend = 1 - bestAmount * 0.75
+
+  return {
+    target: [
+      base[0] + ux * step + wanderX * wanderBlend,
+      0,
+      base[2] + uz * step + wanderZ * wanderBlend,
+    ],
+    yaw: Math.atan2(ux, uz),
+    interaction: bestAmount,
+  }
+}
+
 // ── 3D person avatar — premium minimalist pictogram per spec ─────────────
 //
 // Anatomy (ground = y=0, total height ≈ 1.42 world units):
@@ -118,7 +226,8 @@ function computePositions(people: Person[]): PersonWithPos[] {
 // Materials: MeshPhysicalMaterial with subtle clearcoat for matte clay/porcelain feel.
 
 function PersonAvatar({
-  person, selected, dimmed, isSource, hovered, pressed, dragOverridesRef, onSelect, onPointerDown,
+  person, selected, dimmed, isSource, hovered, pressed, personConnections,
+  basePositionMap, dragOverridesRef, liveMotionRef, onSelect, onPointerDown,
 }: {
   person: PersonWithPos
   selected: boolean
@@ -126,7 +235,10 @@ function PersonAvatar({
   isSource: boolean
   hovered: boolean
   pressed: boolean
+  personConnections: Connection[]
+  basePositionMap: Map<string, [number, number, number]>
   dragOverridesRef: React.MutableRefObject<Map<string, [number, number, number]>>
+  liveMotionRef: LiveMotionRef
   onSelect: (e: ThreeEvent<MouseEvent>) => void
   onPointerDown: (e: ThreeEvent<PointerEvent>) => void
 }) {
@@ -134,6 +246,22 @@ function PersonAvatar({
   const groupRef = useRef<THREE.Group>(null)
   const scaleRef = useRef<THREE.Group>(null)
   const ringRef  = useRef<THREE.Mesh>(null)
+  const leftFootRef = useRef<THREE.Mesh>(null)
+  const rightFootRef = useRef<THREE.Mesh>(null)
+  const leftLegRef = useRef<THREE.Mesh>(null)
+  const rightLegRef = useRef<THREE.Mesh>(null)
+  const torsoRef = useRef<THREE.Mesh>(null)
+  const leftArmRef = useRef<THREE.Mesh>(null)
+  const rightArmRef = useRef<THREE.Mesh>(null)
+  const leftHandRef = useRef<THREE.Mesh>(null)
+  const rightHandRef = useRef<THREE.Mesh>(null)
+  const headRef = useRef<THREE.Mesh>(null)
+  const hairRef = useRef<THREE.Mesh>(null)
+  const currentPosRef = useRef(new THREE.Vector3(person.pos[0], 0, person.pos[2]))
+  const targetPosRef = useRef(new THREE.Vector3(person.pos[0], 0, person.pos[2]))
+  const lastPosRef = useRef(new THREE.Vector3(person.pos[0], 0, person.pos[2]))
+  const yawRef = useRef(0)
+  const stepPhaseRef = useRef(person.idHash * Math.PI * 2)
   const walkPhase = person.idHash * Math.PI * 2
   const isFemale = person.idHash > 0.5
 
@@ -152,23 +280,64 @@ function PersonAvatar({
     hovered   ? torsoColor :
     torsoColor
 
-  // Per-frame: position (drag override or static), idle bob, scale tween, pulsing ring
-  useFrame(({ clock }) => {
+  // Per-frame: living target, procedural walk cycle, scale tween, pulsing ring
+  useFrame(({ clock }, delta) => {
     const t = clock.getElapsedTime()
-    if (rootRef.current) {
-      // Drag overrides take precedence over the prop position so dragging is smooth
-      // without round-tripping through React state.
-      const override = dragOverridesRef.current.get(person.id)
-      if (override) {
-        rootRef.current.position.set(override[0], 0, override[2])
-      } else {
-        rootRef.current.position.set(person.pos[0], 0, person.pos[2])
-      }
+    const dt = Math.min(delta, 0.05)
+    const dragging = dragOverridesRef.current.has(person.id)
+    const override = dragOverridesRef.current.get(person.id)
+    const living = computeLivingTarget(
+      person,
+      personConnections,
+      basePositionMap,
+      t,
+      selected || hovered || isSource || pressed
+    )
+
+    if (override) {
+      currentPosRef.current.set(override[0], 0, override[2])
+      targetPosRef.current.copy(currentPosRef.current)
+    } else {
+      targetPosRef.current.set(living.target[0], 0, living.target[2])
+      currentPosRef.current.lerp(targetPosRef.current, 1 - Math.exp(-dt * 2.2))
     }
+
+    const frameMove = currentPosRef.current.distanceTo(lastPosRef.current)
+    const moving = dragging ? 0 : clamp01((frameMove / Math.max(dt, 0.016)) * 1.35)
+    const interaction = dragging ? 0 : living.interaction
+    stepPhaseRef.current += dt * (2.4 + moving * 7.5) * (0.18 + moving)
+
+    if (rootRef.current) {
+      rootRef.current.position.copy(currentPosRef.current)
+
+      const moveDx = currentPosRef.current.x - lastPosRef.current.x
+      const moveDz = currentPosRef.current.z - lastPosRef.current.z
+      const movingYaw = Math.hypot(moveDx, moveDz) > 0.002 ? Math.atan2(moveDx, moveDz) : living.yaw
+      const yawTarget = interaction > 0.08 ? living.yaw : movingYaw
+      yawRef.current += shortestAngleDelta(yawRef.current, yawTarget) * (1 - Math.exp(-dt * 5.8))
+      rootRef.current.rotation.y = yawRef.current
+    }
+
+    const existingMotion = liveMotionRef.current.get(person.id)
+    if (existingMotion) {
+      existingMotion.position.copy(currentPosRef.current)
+      existingMotion.moving = moving
+      existingMotion.interaction = interaction
+      existingMotion.yaw = yawRef.current
+    } else {
+      liveMotionRef.current.set(person.id, {
+        position: currentPosRef.current.clone(),
+        moving,
+        interaction,
+        yaw: yawRef.current,
+      })
+    }
+
     if (groupRef.current) {
-      // Suppress idle bob while dragging to keep the figure stable under the cursor
-      const dragging = dragOverridesRef.current.has(person.id)
-      groupRef.current.position.y = dragging ? 0 : Math.sin(t * 1.6 + walkPhase) * 0.020
+      const idleBob = Math.sin(t * 1.35 + walkPhase) * 0.018
+      const walkBob = Math.max(0, Math.sin(stepPhaseRef.current * 2)) * 0.035 * moving
+      const talkBob = Math.sin(t * 3.1 + walkPhase) * 0.012 * interaction
+      groupRef.current.position.y = dragging ? 0 : idleBob + walkBob + talkBob
     }
     if (scaleRef.current) {
       const target = pressed || selected ? 1.08 : hovered ? 1.02 : 1.0
@@ -176,6 +345,56 @@ function PersonAvatar({
       const next = THREE.MathUtils.lerp(cur, target, 0.18)
       scaleRef.current.scale.setScalar(next)
     }
+
+    const step = stepPhaseRef.current
+    const swing = Math.sin(step)
+    const counter = Math.sin(step + Math.PI)
+    const gesture = easeInOut01(interaction) * (0.55 + Math.sin(t * 3.4 + walkPhase) * 0.18)
+
+    if (leftLegRef.current) leftLegRef.current.rotation.x = swing * 0.38 * moving
+    if (rightLegRef.current) rightLegRef.current.rotation.x = counter * 0.38 * moving
+    if (leftFootRef.current) {
+      leftFootRef.current.position.z = 0.018 + swing * 0.045 * moving
+      leftFootRef.current.position.y = 0.025 + Math.max(0, swing) * 0.035 * moving
+      leftFootRef.current.rotation.x = -swing * 0.22 * moving
+    }
+    if (rightFootRef.current) {
+      rightFootRef.current.position.z = 0.018 + counter * 0.045 * moving
+      rightFootRef.current.position.y = 0.025 + Math.max(0, counter) * 0.035 * moving
+      rightFootRef.current.rotation.x = -counter * 0.22 * moving
+    }
+    if (leftArmRef.current) {
+      leftArmRef.current.rotation.set(counter * 0.26 * moving - gesture * 0.38, 0, 0.10 + gesture * 0.16)
+    }
+    if (rightArmRef.current) {
+      rightArmRef.current.rotation.set(swing * 0.26 * moving - gesture * 0.28, 0, -0.10 - gesture * 0.12)
+    }
+    if (leftHandRef.current) {
+      leftHandRef.current.position.set(
+        -0.295 - gesture * 0.035,
+        0.60 + gesture * 0.09 + Math.max(0, counter) * 0.018 * moving,
+        0.025 + gesture * 0.12 + counter * 0.025 * moving
+      )
+    }
+    if (rightHandRef.current) {
+      rightHandRef.current.position.set(
+        0.295 + gesture * 0.03,
+        0.60 + gesture * 0.075 + Math.max(0, swing) * 0.018 * moving,
+        0.025 + gesture * 0.10 + swing * 0.025 * moving
+      )
+    }
+    if (torsoRef.current) {
+      torsoRef.current.rotation.x = Math.sin(step * 2) * 0.035 * moving
+      torsoRef.current.rotation.z = Math.sin(t * 1.1 + walkPhase) * 0.018 + swing * 0.025 * moving
+    }
+    if (headRef.current) {
+      headRef.current.rotation.y = Math.sin(t * 0.85 + walkPhase) * 0.13 * (1 - interaction) + Math.sin(t * 2.2 + walkPhase) * 0.08 * interaction
+      headRef.current.rotation.x = Math.sin(t * 0.65 + walkPhase) * 0.035 + interaction * 0.045
+    }
+    if (hairRef.current && headRef.current) {
+      hairRef.current.rotation.copy(headRef.current.rotation)
+    }
+
     if (ringRef.current && (selected || isSource || pressed)) {
       const s = 1 + Math.sin(t * 2.4) * 0.05
       ringRef.current.scale.x = s
@@ -184,6 +403,7 @@ function PersonAvatar({
       ringRef.current.scale.x = 1
       ringRef.current.scale.z = 1
     }
+    lastPosRef.current.copy(currentPosRef.current)
   })
 
   return (
@@ -203,17 +423,17 @@ function PersonAvatar({
             </mesh>
 
             {/* Feet — small flattened ovals pointing slightly forward (+z) */}
-            <mesh position={[-0.075, 0.025, 0.018]} scale={[1.4, 0.5, 1.7]} castShadow>
+            <mesh ref={leftFootRef} position={[-0.075, 0.025, 0.018]} scale={[1.4, 0.5, 1.7]} castShadow>
               <sphereGeometry args={[0.06, 16, 16]} />
               <meshStandardMaterial color={footColor} roughness={0.7} transparent opacity={opacity} />
             </mesh>
-            <mesh position={[0.075, 0.025, 0.018]} scale={[1.4, 0.5, 1.7]} castShadow>
+            <mesh ref={rightFootRef} position={[0.075, 0.025, 0.018]} scale={[1.4, 0.5, 1.7]} castShadow>
               <sphereGeometry args={[0.06, 16, 16]} />
               <meshStandardMaterial color={footColor} roughness={0.7} transparent opacity={opacity} />
             </mesh>
 
             {/* Legs — slim capsules */}
-            <mesh position={[-0.075, 0.27, 0]} castShadow>
+            <mesh ref={leftLegRef} position={[-0.075, 0.27, 0]} castShadow>
               <capsuleGeometry args={[0.06, 0.36, 10, 18]} />
               <meshPhysicalMaterial
                 color={legColor}
@@ -225,7 +445,7 @@ function PersonAvatar({
                 opacity={opacity}
               />
             </mesh>
-            <mesh position={[0.075, 0.27, 0]} castShadow>
+            <mesh ref={rightLegRef} position={[0.075, 0.27, 0]} castShadow>
               <capsuleGeometry args={[0.06, 0.36, 10, 18]} />
               <meshPhysicalMaterial
                 color={legColor}
@@ -253,7 +473,7 @@ function PersonAvatar({
             </mesh>
 
             {/* Torso — tapered: scaled capsule, slimmer front-to-back */}
-            <mesh position={[0, 0.78, 0]} scale={[1, 1, 0.78]} castShadow>
+            <mesh ref={torsoRef} position={[0, 0.78, 0]} scale={[1, 1, 0.78]} castShadow>
               <capsuleGeometry args={[0.18, 0.42, 14, 28]} />
               <meshPhysicalMaterial
                 color={torsoColor}
@@ -279,21 +499,21 @@ function PersonAvatar({
             </mesh>
 
             {/* Arms — slim capsules, slight outward angle so they don't clip the torso */}
-            <mesh position={[-0.245, 0.83, 0.015]} rotation={[0, 0, 0.10]} castShadow>
+            <mesh ref={leftArmRef} position={[-0.245, 0.83, 0.015]} rotation={[0, 0, 0.10]} castShadow>
               <capsuleGeometry args={[0.048, 0.40, 8, 16]} />
               <meshPhysicalMaterial color={torsoColor} roughness={0.6} clearcoat={0.14} clearcoatRoughness={0.4} transparent opacity={opacity} />
             </mesh>
-            <mesh position={[0.245, 0.83, 0.015]} rotation={[0, 0, -0.10]} castShadow>
+            <mesh ref={rightArmRef} position={[0.245, 0.83, 0.015]} rotation={[0, 0, -0.10]} castShadow>
               <capsuleGeometry args={[0.048, 0.40, 8, 16]} />
               <meshPhysicalMaterial color={torsoColor} roughness={0.6} clearcoat={0.14} clearcoatRoughness={0.4} transparent opacity={opacity} />
             </mesh>
 
             {/* Hands — small skin-tone spheres at the end of each arm */}
-            <mesh position={[-0.295, 0.60, 0.025]} castShadow>
+            <mesh ref={leftHandRef} position={[-0.295, 0.60, 0.025]} castShadow>
               <sphereGeometry args={[0.062, 16, 16]} />
               <meshStandardMaterial color={skin} roughness={0.6} transparent opacity={opacity} />
             </mesh>
-            <mesh position={[0.295, 0.60, 0.025]} castShadow>
+            <mesh ref={rightHandRef} position={[0.295, 0.60, 0.025]} castShadow>
               <sphereGeometry args={[0.062, 16, 16]} />
               <meshStandardMaterial color={skin} roughness={0.6} transparent opacity={opacity} />
             </mesh>
@@ -305,7 +525,7 @@ function PersonAvatar({
             </mesh>
 
             {/* HEAD — sphere, skin tone, with subtle clearcoat for the porcelain feel */}
-            <mesh position={[0, 1.27, 0]} castShadow>
+            <mesh ref={headRef} position={[0, 1.27, 0]} castShadow>
               <sphereGeometry args={[0.16, 32, 32]} />
               <meshPhysicalMaterial
                 color={skin}
@@ -320,7 +540,7 @@ function PersonAvatar({
 
             {/* Hair — only on female variant. Soft dome covering top + back of head. */}
             {isFemale && (
-              <mesh position={[0, 1.30, -0.025]} scale={[1.13, 0.86, 1.08]} castShadow>
+              <mesh ref={hairRef} position={[0, 1.30, -0.025]} scale={[1.13, 0.86, 1.08]} castShadow>
                 <sphereGeometry args={[0.16, 32, 16]} />
                 <meshPhysicalMaterial
                   color="#3a2937"
@@ -358,7 +578,7 @@ const BEAM_POINTS = 28
 const BEAM_HEIGHT = 0.85   // chest-center anchor
 
 function ConnectionBeam({
-  connection, fromPos, toPos, color, dimmed, selected, dragOverridesRef,
+  connection, fromPos, toPos, color, dimmed, selected, dragOverridesRef, liveMotionRef,
 }: {
   connection: Connection
   fromPos: [number, number, number]
@@ -367,6 +587,7 @@ function ConnectionBeam({
   dimmed: boolean
   selected: boolean
   dragOverridesRef: React.MutableRefObject<Map<string, [number, number, number]>>
+  liveMotionRef: LiveMotionRef
 }) {
   // drei's <Line> wraps Line2 (LineGeometry under the hood). LineGeometry expects flat
   // positions via setPositions(Float32Array) — using BufferGeometry.setFromPoints silently
@@ -379,14 +600,19 @@ function ConnectionBeam({
   const mid = useRef(new THREE.Vector3())
   const tmp = useRef(new THREE.Vector3())
   const curve = useRef(new THREE.QuadraticBezierCurve3())
+  const sparkRef = useRef<THREE.Mesh>(null)
+  const sparkMaterialRef = useRef<THREE.MeshBasicMaterial>(null)
 
-  useFrame(() => {
+  useFrame(({ clock }) => {
+    const t = clock.getElapsedTime()
     const ovFrom = dragOverridesRef.current.get(connection.from_id)
     const ovTo   = dragOverridesRef.current.get(connection.to_id)
-    const fx = ovFrom ? ovFrom[0] : fromPos[0]
-    const fz = ovFrom ? ovFrom[2] : fromPos[2]
-    const tx = ovTo   ? ovTo[0]   : toPos[0]
-    const tz = ovTo   ? ovTo[2]   : toPos[2]
+    const liveFrom = liveMotionRef.current.get(connection.from_id)?.position
+    const liveTo = liveMotionRef.current.get(connection.to_id)?.position
+    const fx = ovFrom ? ovFrom[0] : liveFrom ? liveFrom.x : fromPos[0]
+    const fz = ovFrom ? ovFrom[2] : liveFrom ? liveFrom.z : fromPos[2]
+    const tx = ovTo   ? ovTo[0]   : liveTo   ? liveTo.x   : toPos[0]
+    const tz = ovTo   ? ovTo[2]   : liveTo   ? liveTo.z   : toPos[2]
 
     a.current.set(fx, BEAM_HEIGHT, fz)
     b.current.set(tx, BEAM_HEIGHT, tz)
@@ -411,6 +637,24 @@ function ConnectionBeam({
       line.geometry.setPositions(buf)
       // For dashed lines the line distances need recomputing
       if (typeof line.computeLineDistances === "function") line.computeLineDistances()
+      const activity = connectionActivity(connection, t)
+      if (line.material) {
+        line.material.opacity = dimmed
+          ? 0.08
+          : selected
+            ? 0.95
+            : 0.42 + activity.amount * 0.34
+      }
+      if (sparkRef.current && sparkMaterialRef.current) {
+        if (activity.amount > 0.02 && !dimmed) {
+          curve.current.getPoint(easeInOut01(activity.progress), tmp.current)
+          sparkRef.current.position.copy(tmp.current)
+          sparkRef.current.scale.setScalar(0.7 + activity.amount * 1.7)
+          sparkMaterialRef.current.opacity = activity.amount * (selected ? 0.95 : 0.72)
+        } else {
+          sparkMaterialRef.current.opacity = 0
+        }
+    }
     }
   })
 
@@ -422,17 +666,23 @@ function ConnectionBeam({
 
   const strength = connection.strength ?? 3
   return (
-    <Line
-      ref={lineRef}
-      points={initialPoints}
-      color={color}
-      lineWidth={selected ? Math.max(2.2, strength * 0.8) : 1.4}
-      transparent
-      opacity={dimmed ? 0.08 : selected ? 0.95 : 0.55}
-      dashed={strength <= 2}
-      dashSize={0.12}
-      gapSize={0.08}
-    />
+    <>
+      <Line
+        ref={lineRef}
+        points={initialPoints}
+        color={color}
+        lineWidth={selected ? Math.max(2.2, strength * 0.8) : 1.4}
+        transparent
+        opacity={dimmed ? 0.08 : selected ? 0.95 : 0.55}
+        dashed={strength <= 2}
+        dashSize={0.12}
+        gapSize={0.08}
+      />
+      <mesh ref={sparkRef} visible={!dimmed}>
+        <sphereGeometry args={[0.055, 16, 16]} />
+        <meshBasicMaterial ref={sparkMaterialRef} color={color} transparent opacity={0} depthWrite={false} />
+      </mesh>
+    </>
   )
 }
 
@@ -442,7 +692,7 @@ function ConnectionBeam({
 // ── Main scene ─────────────────────────────────────────────
 function Scene({
   people, connections, onPersonClick, onPersonPointerDown, hoveredPersonId, setHovered,
-  pressedId, dragOverridesRef, controlsRef, sceneRefsRef,
+  pressedId, dragOverridesRef, liveMotionRef, controlsRef, sceneRefsRef,
 }: {
   people: PersonWithPos[]
   connections: Connection[]
@@ -452,16 +702,35 @@ function Scene({
   setHovered: (id: string | null) => void
   pressedId: string | null
   dragOverridesRef: React.MutableRefObject<Map<string, [number, number, number]>>
+  liveMotionRef: LiveMotionRef
   controlsRef: React.MutableRefObject<OrbitControlsImpl | null>
   sceneRefsRef: React.MutableRefObject<SceneRefs | null>
 }) {
   const { selectedPersonId, connectFromId } = useAppStore()
 
-  const positionMap = useMemo(() => {
+  const basePositionMap = useMemo(() => {
     const m = new Map<string, [number, number, number]>()
     people.forEach(p => m.set(p.id, p.pos))
     return m
   }, [people])
+
+  const connectionsByPerson = useMemo(() => {
+    const m = new Map<string, Connection[]>()
+    for (const connection of connections) {
+      if (!m.has(connection.from_id)) m.set(connection.from_id, [])
+      if (!m.has(connection.to_id)) m.set(connection.to_id, [])
+      m.get(connection.from_id)!.push(connection)
+      m.get(connection.to_id)!.push(connection)
+    }
+    return m
+  }, [connections])
+
+  useEffect(() => {
+    const ids = new Set(people.map(p => p.id))
+    for (const id of liveMotionRef.current.keys()) {
+      if (!ids.has(id)) liveMotionRef.current.delete(id)
+    }
+  }, [people, liveMotionRef])
 
   const neighborSet = useMemo(() => {
     if (!hoveredPersonId) return null
@@ -485,8 +754,8 @@ function Scene({
 
       {/* Connections */}
       {connections.map(c => {
-        const fromPos = positionMap.get(c.from_id)
-        const toPos   = positionMap.get(c.to_id)
+        const fromPos = basePositionMap.get(c.from_id)
+        const toPos   = basePositionMap.get(c.to_id)
         if (!fromPos || !toPos) return null
         const groupKey = (c.type ?? "other") as GroupKey
         const color = GROUPS[groupKey]?.color ?? "#9CA3AF"
@@ -508,6 +777,7 @@ function Scene({
             dimmed={dimmed}
             selected={isAdjacentToSelected}
             dragOverridesRef={dragOverridesRef}
+            liveMotionRef={liveMotionRef}
           />
         )
       })}
@@ -536,7 +806,10 @@ function Scene({
               hovered={hoveredPersonId === p.id}
               pressed={pressedId === p.id}
               dimmed={!!dimmed}
+              personConnections={connectionsByPerson.get(p.id) ?? EMPTY_CONNECTIONS}
+              basePositionMap={basePositionMap}
               dragOverridesRef={dragOverridesRef}
+              liveMotionRef={liveMotionRef}
               onSelect={(e) => { e.stopPropagation(); onPersonClick(p.id) }}
               onPointerDown={(e) => { e.stopPropagation(); onPersonPointerDown(p.id, e) }}
             />
@@ -590,6 +863,7 @@ export default function Map3DView() {
   // Live drag positions (world units) — read every frame by PersonAvatar via useFrame.
   // Bypasses React reconciliation so dragging stays smooth.
   const dragOverridesRef = useRef<Map<string, [number, number, number]>>(new Map())
+  const liveMotionRef    = useRef<Map<string, LivePersonMotion>>(new Map())
   const dragMovedRef     = useRef(false)
   // Track pointer-down position so we can distinguish a tap (close panel) from a pan (don't)
   const pointerDownRef   = useRef<{ x: number; y: number } | null>(null)
@@ -760,6 +1034,7 @@ export default function Map3DView() {
             setHovered={setHoveredPersonId}
             pressedId={pressedId}
             dragOverridesRef={dragOverridesRef}
+            liveMotionRef={liveMotionRef}
             controlsRef={controlsRef}
             sceneRefsRef={sceneRefsRef}
           />

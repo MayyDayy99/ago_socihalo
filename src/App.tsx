@@ -249,11 +249,59 @@ export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
+    let mounted = true
+
+    function cleanAuthUrl() {
+      const url = new URL(window.location.href)
+      const authParams = ["code", "error", "error_code", "error_description"]
+      const hadAuthParams = authParams.some(param => url.searchParams.has(param))
+      authParams.forEach(param => url.searchParams.delete(param))
+
+      if (hadAuthParams || url.hash.includes("access_token") || url.hash.includes("refresh_token")) {
+        window.history.replaceState(
+          {},
+          document.title,
+          `${url.pathname}${url.search}`
+        )
+      }
+    }
+
+    async function initSession() {
+      const url = new URL(window.location.href)
+      const authError = url.searchParams.get("error_description") ?? url.searchParams.get("error")
+      if (authError) {
+        console.error("Supabase auth callback failed:", authError)
+        cleanAuthUrl()
+        if (mounted) setSession(null)
+        return
+      }
+
+      const code = url.searchParams.get("code")
+      if (code) {
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+        if (error) {
+          console.error("Supabase auth code exchange failed:", error.message)
+          if (mounted) setSession(null)
+        } else if (mounted) {
+          setSession(data.session)
+        }
+        cleanAuthUrl()
+        return
+      }
+
+      const { data: { session } } = await supabase.auth.getSession()
+      cleanAuthUrl()
+      if (mounted) setSession(session)
+    }
+
+    initSession()
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
-      setSession(session)
+      if (mounted) setSession(session)
     })
-    return () => subscription.unsubscribe()
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
   }, [])
 
   if (session === undefined) return <LoadingScreen />

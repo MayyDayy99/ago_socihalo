@@ -2,6 +2,29 @@ import { useState } from "react"
 import { supabase } from "../../lib/supabase"
 import { motion } from "framer-motion"
 
+function getAuthRedirectTo() {
+  return new URL(import.meta.env.BASE_URL, window.location.origin).toString()
+}
+
+function getAuthErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  const lower = message.toLowerCase()
+
+  if (lower.includes("signup") || lower.includes("signups") || lower.includes("not allowed")) {
+    return "Ez az e-mail még nincs beengedve, és a Supabase-ben tiltva van az új felhasználók regisztrációja. Kapcsold be: Authentication → Providers → Email → Allow new users to sign up."
+  }
+
+  if (lower.includes("rate") || lower.includes("too many")) {
+    return "Túl sok belépési linket kértél rövid idő alatt. Várj egy kicsit, aztán próbáld újra."
+  }
+
+  if (lower.includes("redirect")) {
+    return `A belépési átirányítás nincs engedélyezve Supabase-ben: ${getAuthRedirectTo()}`
+  }
+
+  return message
+}
+
 export default function MagicLinkScreen() {
   const [email, setEmail] = useState("")
   const [sent, setSent] = useState(false)
@@ -12,17 +35,23 @@ export default function MagicLinkScreen() {
     e.preventDefault()
     setError(null)
     setLoading(true)
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: window.location.origin + "/ago_socihalo/",
-      },
-    })
-    setLoading(false)
-    if (error) {
-      setError(error.message)
-    } else {
+    const normalizedEmail = email.trim().toLowerCase()
+    setEmail(normalizedEmail)
+
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email: normalizedEmail,
+        options: {
+          emailRedirectTo: getAuthRedirectTo(),
+          shouldCreateUser: true,
+        },
+      })
+      if (error) throw error
       setSent(true)
+    } catch (err) {
+      setError(getAuthErrorMessage(err))
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -72,6 +101,7 @@ export default function MagicLinkScreen() {
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
+                autoComplete="email"
                 required
                 placeholder="te@example.com"
                 className="w-full bg-app border border-border rounded px-3 py-2 text-sm text-text placeholder-muted focus:outline-none focus:border-accent transition-colors"
@@ -86,7 +116,7 @@ export default function MagicLinkScreen() {
 
             <button
               type="submit"
-              disabled={loading || !email}
+              disabled={loading || !email.trim()}
               className="w-full bg-accent hover:bg-accent-2 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold py-2 rounded transition-colors"
             >
               {loading ? "Küldés..." : "Magic link küldése"}

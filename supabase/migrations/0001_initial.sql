@@ -37,7 +37,7 @@ create table public.connections (
   type        text check (type in (
     'family','work','friend','business','acquaintance','community','bridge','other'
   )),
-  directed    boolean default false,
+  directed    boolean not null default false,
   strength    smallint check (strength between 1 and 5),
   context     text,
   confidence  text check (confidence in ('confirmed','inferred','suggested')) default 'confirmed',
@@ -74,6 +74,9 @@ create index people_role_idx         on public.people (user_id, role_key);
 create index people_name_idx         on public.people using gin (to_tsvector('simple', display_name));
 create index connections_user_from   on public.connections (user_id, from_id);
 create index connections_user_to     on public.connections (user_id, to_id);
+create unique index connections_user_undirected_pair_idx
+  on public.connections (user_id, least(from_id, to_id), greatest(from_id, to_id))
+  where directed = false;
 
 -- ─── Row Level Security ──────────────────────────────────
 alter table public.people         enable row level security;

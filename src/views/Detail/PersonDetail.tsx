@@ -143,13 +143,13 @@ export default function PersonDetail() {
     setSelectedPersonId(null)
   }
 
-  function addTag() {
+  async function addTag() {
     if (!edit) return
     const t = edit.tagInput.trim()
     if (t && !edit.tags.includes(t)) {
       const newTags = [...edit.tags, t]
       setEdit(e => e ? { ...e, tags: newTags, tagInput: "" } : e)
-      setDirty(true)
+      await save({ tags: newTags })
     } else {
       setEdit(e => e ? { ...e, tagInput: "" } : e)
     }
