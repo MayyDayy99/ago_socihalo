@@ -10,20 +10,21 @@ interface NodeProps {
   isSelected: boolean
   isConnectSource: boolean
   isDropTarget: boolean
+  isPressed: boolean
   isDimmed: boolean
   isPathHighlighted: boolean
   onClick: () => void
   onMouseEnter: () => void
   onMouseLeave: () => void
-  onMouseDown: (e: React.MouseEvent) => void
+  onPointerDown: (e: React.PointerEvent) => void
 }
 
 // "Person" glyph: a head circle floating above a body circle.
 // The body's center is the logical (x,y) — connection lines anchor here.
 function NodeImpl({
   person, x, y, radius,
-  isSelected, isConnectSource, isDropTarget, isDimmed, isPathHighlighted,
-  onClick, onMouseEnter, onMouseLeave, onMouseDown,
+  isSelected, isConnectSource, isDropTarget, isPressed, isDimmed, isPathHighlighted,
+  onClick, onMouseEnter, onMouseLeave, onPointerDown,
 }: NodeProps) {
   const groupColor = person.group_key ? GROUPS[person.group_key]?.color ?? "#6B7280" : "#6B7280"
   const roleColor  = ROLES[person.role_key]?.color
@@ -68,17 +69,24 @@ function NodeImpl({
   return (
     <g
       transform={`translate(${x},${y})`}
-      style={{ opacity, cursor: "pointer" }}
+      style={{ opacity, cursor: "pointer", touchAction: "none" }}
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      onMouseDown={onMouseDown}
+      onPointerDown={onPointerDown}
     >
       {/* Connect-source pulsing halo (orange) */}
       {isConnectSource && (
         <circle r={haloR} fill="#D97706" opacity={0.10}>
           <animate attributeName="r" values={`${haloR};${haloR + 6};${haloR}`} dur="1.4s" repeatCount="indefinite" />
           <animate attributeName="opacity" values="0.06;0.20;0.06" dur="1.4s" repeatCount="indefinite" />
+        </circle>
+      )}
+      {/* Long-press shrinking halo — visual feedback while waiting for drag mode to engage */}
+      {isPressed && !isConnectSource && !isDropTarget && (
+        <circle r={haloR + 4} fill="none" stroke="#2563EB" strokeWidth={2} strokeOpacity={0.85}>
+          <animate attributeName="r" values={`${haloR + 8};${haloR + 1}`} dur="0.4s" repeatCount="1" fill="freeze" />
+          <animate attributeName="stroke-opacity" values="0.85;0.25" dur="0.4s" repeatCount="1" fill="freeze" />
         </circle>
       )}
       {/* Drop-target pulsing halo (green) — shows when in connect mode and you're hovering this node */}
@@ -159,9 +167,10 @@ export default memo(NodeImpl, (prev, next) =>
   prev.isSelected === next.isSelected &&
   prev.isConnectSource === next.isConnectSource &&
   prev.isDropTarget === next.isDropTarget &&
+  prev.isPressed === next.isPressed &&
   prev.isDimmed === next.isDimmed &&
   prev.isPathHighlighted === next.isPathHighlighted &&
   prev.person === next.person &&
   prev.onClick === next.onClick &&
-  prev.onMouseDown === next.onMouseDown
+  prev.onPointerDown === next.onPointerDown
 )

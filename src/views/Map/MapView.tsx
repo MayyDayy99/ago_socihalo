@@ -46,6 +46,7 @@ export default function MapView() {
   const [size, setSize]     = useState({ w: 800, h: 600 })
   const [pendingConn, setPendingConn] = useState<{ fromId: string; toId: string } | null>(null)
   const [isPanning, setIsPanning] = useState(false)
+  const [pressedId, setPressedId] = useState<string | null>(null)
   const dragRef = useRef<{ id: string; sx: number; sy: number; moved: boolean } | null>(null)
   const tickRafRef = useRef<number | null>(null)
   const transformRafRef = useRef<number | null>(null)
@@ -222,7 +223,7 @@ export default function MapView() {
     }
   }, [connectMode, connectFromId, setConnectFromId, setConnectMode, setSelectedPersonId])
 
-  const handleNodeMouseDown = useCallback((e: React.MouseEvent, person: Person) => {
+  const handleNodePointerDown = useCallback((e: React.PointerEvent, person: Person) => {
     if (e.shiftKey) {
       e.stopPropagation()
       setConnectFromId(person.id)
@@ -231,20 +232,62 @@ export default function MapView() {
     }
     if (connectMode) return
     e.stopPropagation()
-    dragRef.current = { id: person.id, sx: e.clientX, sy: e.clientY, moved: false }
-    const startNode = nodesRef.current.find(n => n.id === person.id)
-    if (!startNode) return
-    const startFx = startNode.x ?? 0
-    const startFy = startNode.y ?? 0
-    startNode.fx = startFx
-    startNode.fy = startFy
 
-    function onMove(me: MouseEvent) {
+    const isTouch = e.pointerType === "touch"
+    // Touch: long-press (~400ms) before drag engages, so a tap remains a tap.
+    // Mouse / pen: drag engages immediately on movement.
+    const longPressMs = isTouch ? 400 : 0
+    const moveThreshold = isTouch ? 8 : 2
+    let dragActive = !isTouch
+    let startFx = 0, startFy = 0
+    let pinnedThisGesture = false
+
+    dragRef.current = { id: person.id, sx: e.clientX, sy: e.clientY, moved: false }
+
+    function pinNow() {
+      if (pinnedThisGesture) return
+      const n = nodesRef.current.find(x => x.id === person.id)
+      if (!n) return
+      startFx = n.x ?? 0
+      startFy = n.y ?? 0
+      n.fx = startFx
+      n.fy = startFy
+      pinnedThisGesture = true
+    }
+
+    let longPressTimer: number | null = null
+    if (isTouch) {
+      setPressedId(person.id)
+      longPressTimer = window.setTimeout(() => {
+        longPressTimer = null
+        dragActive = true
+        pinNow()
+        navigator.vibrate?.(15)
+      }, longPressMs)
+    }
+
+    function cancelLongPress() {
+      if (longPressTimer !== null) {
+        clearTimeout(longPressTimer)
+        longPressTimer = null
+      }
+    }
+
+    function onMove(me: PointerEvent) {
       const drag = dragRef.current
       if (!drag) return
       const dx = (me.clientX - drag.sx) / transformRef.current.k
       const dy = (me.clientY - drag.sy) / transformRef.current.k
-      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) drag.moved = true
+      const dist = Math.hypot(dx, dy)
+      if (dist > moveThreshold) drag.moved = true
+      // Touch + movement before long-press fires → user is panning, abort drag attempt
+      if (isTouch && !dragActive && drag.moved) {
+        cancelLongPress()
+        cleanup()
+        return
+      }
+      if (!dragActive) return
+      if (!pinnedThisGesture) pinNow()
       const n = nodesRef.current.find(x => x.id === drag.id)
       if (!n) return
       n.fx = startFx + dx
@@ -253,18 +296,28 @@ export default function MapView() {
     }
 
     function onUp() {
+      cancelLongPress()
       const drag = dragRef.current
-      if (!drag) return
-      const n = nodesRef.current.find(x => x.id === drag.id)
-      if (drag.moved && n && n.fx !== undefined && n.fx !== null) {
-        updatePerson.mutate({ id: drag.id, pinned_x: n.fx, pinned_y: n.fy ?? null })
+      if (drag && drag.moved && dragActive && pinnedThisGesture) {
+        const n = nodesRef.current.find(x => x.id === drag.id)
+        if (n && n.fx !== undefined && n.fx !== null) {
+          updatePerson.mutate({ id: drag.id, pinned_x: n.fx, pinned_y: n.fy ?? null })
+        }
       }
-      dragRef.current = null
-      window.removeEventListener("mousemove", onMove)
-      window.removeEventListener("mouseup", onUp)
+      cleanup()
     }
-    window.addEventListener("mousemove", onMove)
-    window.addEventListener("mouseup", onUp)
+
+    function cleanup() {
+      dragRef.current = null
+      setPressedId(null)
+      window.removeEventListener("pointermove", onMove)
+      window.removeEventListener("pointerup", onUp)
+      window.removeEventListener("pointercancel", onUp)
+    }
+
+    window.addEventListener("pointermove", onMove)
+    window.addEventListener("pointerup", onUp)
+    window.addEventListener("pointercancel", onUp)
   }, [connectMode, setConnectFromId, setConnectMode, updatePerson])
 
   // ── ESC cancels connect mode ──────────────────────────
@@ -367,12 +420,13 @@ export default function MapView() {
                   isSelected={isSel}
                   isConnectSource={isSrc}
                   isDropTarget={isDrop}
+                  isPressed={pressedId === n.id}
                   isDimmed={dimmed}
                   isPathHighlighted={inPath}
                   onClick={() => handleNodeClick(n)}
                   onMouseEnter={() => setHoveredId(n.id)}
                   onMouseLeave={() => setHoveredId(null)}
-                  onMouseDown={(e) => handleNodeMouseDown(e, n)}
+                  onPointerDown={(e) => handleNodePointerDown(e, n)}
                 />
               </g>
             )
