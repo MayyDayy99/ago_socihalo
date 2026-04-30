@@ -1,5 +1,5 @@
 import { Canvas, useFrame, type ThreeEvent } from "@react-three/fiber"
-import { Billboard, ContactShadows, Float, Html, Line, OrbitControls, RoundedBox, Text } from "@react-three/drei"
+import { Billboard, ContactShadows, Float, Html, Line, OrbitControls, Text } from "@react-three/drei"
 import { Suspense, useMemo, useRef, useCallback, useState } from "react"
 import * as THREE from "three"
 import { usePeople, useUpdatePerson } from "../../hooks/usePeople"
@@ -87,15 +87,15 @@ function PersonAvatar({
   const groupRef = useRef<THREE.Group>(null)
   const walkPhase = person.idHash * Math.PI * 2
 
+  // Subtle vertical bob only — no rotation sway (cleaner, calmer look)
   useFrame(({ clock }) => {
     if (!groupRef.current) return
     const t = clock.getElapsedTime()
-    groupRef.current.position.y = Math.sin(t * 2.25 + walkPhase) * 0.045
-    groupRef.current.rotation.y = Math.sin(t * 1.15 + walkPhase) * 0.035
+    groupRef.current.position.y = Math.sin(t * 1.6 + walkPhase) * 0.022
   })
 
   const groupColor = person.group_key ? GROUPS[person.group_key]?.color ?? "#6B7280" : "#6B7280"
-  const opacity = dimmed ? 0.3 : 1
+  const opacity = dimmed ? 0.32 : 1
   const ringColor = isSource ? "#D97706" : selected ? "#111827" : groupColor
   const ringWidth = isSource ? 0.06 : selected ? 0.05 : 0.04
 
@@ -108,53 +108,72 @@ function PersonAvatar({
     .join("")
     .toUpperCase()
 
-  // Body fill: light gray + faint group tint, matching the 2D node's "white with group tint" body
+  // Subtle palette — body slightly lighter than limbs so the silhouette reads
   const bodyColor = "#E5E7EB"
-  const limbColor = "#9CA3AF"
+  const limbColor = "#B5BBC5"
+  const jointColor = "#CBD0D8"
 
+  // Refined proportions — taller, slimmer, arms hanging naturally close to body.
+  // Total height ~1.7 units (head top ≈ 1.32, feet bottom ≈ -0.42).
   return (
     <group position={person.pos} onClick={onSelect}>
-      <Float speed={1.2} rotationIntensity={0.04} floatIntensity={selected || isSource ? 0.16 : 0.04}>
+      <Float speed={1.0} rotationIntensity={0.02} floatIntensity={selected || isSource ? 0.10 : 0.03}>
         <group ref={groupRef}>
           {/* Floor ring — colored by group/state, like the 2D node's outer ring */}
-          <mesh position={[0, 0.04, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[0.42, 0.5, 64]} />
+          <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.36, 0.44, 64]} />
             <meshBasicMaterial
               color={ringColor}
               transparent
-              opacity={isSource ? 0.85 : selected ? 0.65 : 0.4 * opacity}
+              opacity={isSource ? 0.85 : selected ? 0.65 : 0.32 * opacity}
             />
           </mesh>
 
-          {/* Torso */}
-          <mesh position={[0, 0.32, 0]} scale={[0.22, 0.55, 0.18]}>
-            <capsuleGeometry args={[1, 1.25, 8, 18]} />
-            <meshStandardMaterial color={bodyColor} roughness={0.6} metalness={0.0} transparent opacity={opacity} />
+          {/* Torso — taller, slimmer capsule */}
+          <mesh position={[0, 0.5, 0]} scale={[0.20, 0.78, 0.15]} castShadow>
+            <capsuleGeometry args={[1, 1.20, 12, 24]} />
+            <meshStandardMaterial color={bodyColor} roughness={0.55} metalness={0} transparent opacity={opacity} />
           </mesh>
 
-          {/* Arms */}
-          <mesh position={[-0.34, 0.68, 0]} rotation={[0, 0, selected ? -0.32 : -0.12]}>
-            <capsuleGeometry args={[0.055, 0.36, 6, 10]} />
-            <meshStandardMaterial color={limbColor} roughness={0.6} transparent opacity={opacity} />
+          {/* Shoulder caps — small spheres that smooth the torso→arm transition */}
+          <mesh position={[-0.20, 0.83, 0]} castShadow>
+            <sphereGeometry args={[0.062, 16, 16]} />
+            <meshStandardMaterial color={jointColor} roughness={0.55} transparent opacity={opacity} />
           </mesh>
-          <mesh position={[0.34, 0.68, 0]} rotation={[0, 0, selected ? 0.32 : 0.12]}>
-            <capsuleGeometry args={[0.055, 0.36, 6, 10]} />
-            <meshStandardMaterial color={limbColor} roughness={0.6} transparent opacity={opacity} />
+          <mesh position={[0.20, 0.83, 0]} castShadow>
+            <sphereGeometry args={[0.062, 16, 16]} />
+            <meshStandardMaterial color={jointColor} roughness={0.55} transparent opacity={opacity} />
           </mesh>
 
-          {/* Legs */}
-          <mesh position={[-0.13, -0.28, 0]} rotation={[0, 0, Math.sin(walkPhase) * 0.12]}>
-            <capsuleGeometry args={[0.065, 0.42, 6, 10]} />
-            <meshStandardMaterial color={limbColor} roughness={0.6} transparent opacity={opacity} />
+          {/* Arms — slim, hanging naturally (very small outward angle) */}
+          <mesh position={[-0.20, 0.55, 0]} rotation={[0, 0, -0.045]} castShadow>
+            <capsuleGeometry args={[0.045, 0.5, 8, 16]} />
+            <meshStandardMaterial color={limbColor} roughness={0.55} transparent opacity={opacity} />
           </mesh>
-          <mesh position={[0.13, -0.28, 0]} rotation={[0, 0, -Math.sin(walkPhase) * 0.12]}>
-            <capsuleGeometry args={[0.065, 0.42, 6, 10]} />
-            <meshStandardMaterial color={limbColor} roughness={0.6} transparent opacity={opacity} />
+          <mesh position={[0.20, 0.55, 0]} rotation={[0, 0, 0.045]} castShadow>
+            <capsuleGeometry args={[0.045, 0.5, 8, 16]} />
+            <meshStandardMaterial color={limbColor} roughness={0.55} transparent opacity={opacity} />
+          </mesh>
+
+          {/* Hip joint — small smoothing sphere where torso meets legs */}
+          <mesh position={[0, 0.07, 0]} scale={[1.1, 0.7, 0.95]} castShadow>
+            <sphereGeometry args={[0.10, 16, 16]} />
+            <meshStandardMaterial color={jointColor} roughness={0.55} transparent opacity={opacity} />
+          </mesh>
+
+          {/* Legs — longer, narrow, close together */}
+          <mesh position={[-0.07, -0.18, 0]} castShadow>
+            <capsuleGeometry args={[0.052, 0.46, 8, 16]} />
+            <meshStandardMaterial color={limbColor} roughness={0.55} transparent opacity={opacity} />
+          </mesh>
+          <mesh position={[0.07, -0.18, 0]} castShadow>
+            <capsuleGeometry args={[0.052, 0.46, 8, 16]} />
+            <meshStandardMaterial color={limbColor} roughness={0.55} transparent opacity={opacity} />
           </mesh>
 
           {/* HEAD — Billboard so it always reads as the same flat 2D-style circle from any angle.
               Matches the 2D node: white inner + group-color border + initial letter. */}
-          <Billboard position={[0, 1.05, 0]} follow={true}>
+          <Billboard position={[0, 1.18, 0]} follow={true}>
             {/* Soft halo for selection / source — hidden when neither */}
             {(isSource || selected) && (
               <mesh position={[0, 0, -0.001]}>
@@ -190,12 +209,18 @@ function PersonAvatar({
             </Text>
           </Billboard>
 
-          {/* Name label below — light office style (light bg + dark text) */}
-          <Html position={[0, -0.65, 0]} center distanceFactor={7.5} style={{ pointerEvents: "none" }}>
+          {/* Name label above head — light office style (light bg + dark text) */}
+          <Html position={[0, 1.62, 0]} center distanceFactor={7.5} style={{ pointerEvents: "none" }}>
             <div className={`person3d-label-light ${selected ? "selected" : ""} ${dimmed ? "dimmed" : ""} ${isSource ? "source" : ""}`}>
               {person.display_name}
             </div>
           </Html>
+
+          {/* Invisible larger hit cylinder so touch clicks land on the figure even at distance */}
+          <mesh position={[0, 0.5, 0]} visible={false}>
+            <cylinderGeometry args={[0.36, 0.36, 1.7, 12]} />
+            <meshBasicMaterial transparent opacity={0} />
+          </mesh>
         </group>
       </Float>
     </group>
@@ -214,10 +239,11 @@ function ConnectionBeam({
   selected: boolean
 }) {
   const points = useMemo(() => {
-    const a = new THREE.Vector3(fromPos[0], 0.92, fromPos[2])
-    const b = new THREE.Vector3(toPos[0], 0.92, toPos[2])
+    // Beams now anchor to the head Billboard height (y=1.18), not the old 0.92 sphere center.
+    const a = new THREE.Vector3(fromPos[0], 1.18, fromPos[2])
+    const b = new THREE.Vector3(toPos[0], 1.18, toPos[2])
     const mid = a.clone().lerp(b, 0.5)
-    mid.y += Math.max(0.45, a.distanceTo(b) * 0.18)
+    mid.y += Math.max(0.35, a.distanceTo(b) * 0.16)
     const curve = new THREE.QuadraticBezierCurve3(a, mid, b)
     return curve.getPoints(30)
   }, [fromPos, toPos])
@@ -271,20 +297,12 @@ function Scene({
   return (
     <>
       <color attach="background" args={["#F5F5F5"]} />
-      <fog attach="fog" args={["#F5F5F5", 14, 28]} />
-      <ambientLight intensity={1.0} />
-      <directionalLight position={[5, 8, 4]} intensity={1.4} castShadow />
-      <directionalLight position={[-4, 6, -2]} intensity={0.4} />
-
-      {/* Light floor — matches the 2D map's bg-app + dot grid aesthetic */}
-      <RoundedBox args={[14, 0.06, 12]} radius={0.06} position={[0, -0.04, 0]} receiveShadow>
-        <meshStandardMaterial color="#FAFAFA" roughness={0.95} metalness={0.0} />
-      </RoundedBox>
-      {/* Subtle dot/grid hint — same color as 2D's map-canvas radial-gradient dots */}
-      <gridHelper args={[14, 28, "#D1D5DB", "#E5E7EB"]} position={[0, 0.005, 0]} />
-      {/* Group zones are a 3D-only concept that the 2D view doesn't show — leave them out
-          for visual parity. Re-enable later if the user wants them as a colored zoning hint. */}
-      {/* <GroupZones counts={groupCounts} /> */}
+      <fog attach="fog" args={["#F5F5F5", 16, 32]} />
+      {/* Soft, even lighting — catalog-photo style */}
+      <ambientLight intensity={0.95} />
+      <directionalLight position={[5, 9, 4]} intensity={1.1} castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} />
+      <directionalLight position={[-5, 7, -2]} intensity={0.35} />
+      {/* No floor slab and no grid — people float on contact shadows for a clean catalog look */}
 
       {/* Connections */}
       {connections.map(c => {
@@ -342,17 +360,21 @@ function Scene({
         )
       })}
 
-      <ContactShadows position={[0, 0.01, 0]} opacity={0.18} scale={14} blur={2.6} far={3.2} color="#1f2937" />
-      {/* No Environment HDRI — keeps the look matte / office-clean instead of cinematic. */}
+      {/* One big contact shadow under the whole scene — gives every avatar a soft
+          catalog-style foot shadow without needing a visible floor. */}
+      <ContactShadows position={[0, 0.001, 0]} opacity={0.32} scale={50} blur={2.0} far={2.0} resolution={1024} color="#0f172a" />
+      {/* No Environment HDRI — keeps the look matte / clean instead of cinematic. */}
       <OrbitControls
         makeDefault
         enablePan
         enableZoom
+        enableDamping
+        dampingFactor={0.12}
         minDistance={5}
-        maxDistance={14}
+        maxDistance={16}
         minPolarAngle={Math.PI * 0.18}
         maxPolarAngle={Math.PI * 0.49}
-        target={[0, 0.5, 0]}
+        target={[0, 0.7, 0]}
       />
     </>
   )
