@@ -19,7 +19,7 @@ import { UserPlus } from "lucide-react"
 type SimNode = Person & d3.SimulationNodeDatum
 type SimLink = d3.SimulationLinkDatum<SimNode> & { data: Connection }
 
-const MIN_R = 5, MAX_R = 18
+const MIN_R = 18, MAX_R = 34
 
 export default function MapView() {
   const { data: people = [], isLoading: peopleLoading } = usePeople()
@@ -118,7 +118,7 @@ export default function MapView() {
       .alphaDecay(0.04)
       .force("link", d3.forceLink<SimNode, SimLink>(linkList).id(d => d.id).distance(90).strength(0.4))
       .force("charge", d3.forceManyBody<SimNode>().strength(-220))
-      .force("collide", d3.forceCollide<SimNode>(28))
+      .force("collide", d3.forceCollide<SimNode>(44))
       .force("center", d3.forceCenter(0, 0))
       .on("tick", () => {
         nodesRef.current = sim.nodes()

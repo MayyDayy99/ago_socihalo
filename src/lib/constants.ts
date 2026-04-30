@@ -1,11 +1,11 @@
 export const GROUPS = {
-  family:       { label: "Család",    color: "#DC2626", icon: "♥" },
-  work:         { label: "Munka",     color: "#2563EB", icon: "●" },
-  friend:       { label: "Barát",     color: "#059669", icon: "★" },
-  business:     { label: "Üzleti",    color: "#D97706", icon: "◆" },
-  acquaintance: { label: "Ismerős",   color: "#7C3AED", icon: "○" },
-  community:    { label: "Közösség",  color: "#DB2777", icon: "△" },
-  other:        { label: "Egyéb",     color: "#6B7280", icon: "▫" },
+  family:       { label: "Család",    color: "#F87171", icon: "♥" },
+  work:         { label: "Munka",     color: "#60A5FA", icon: "●" },
+  friend:       { label: "Barát",     color: "#34D399", icon: "★" },
+  business:     { label: "Üzleti",    color: "#FBBF24", icon: "◆" },
+  acquaintance: { label: "Ismerős",   color: "#A78BFA", icon: "○" },
+  community:    { label: "Közösség",  color: "#F472B6", icon: "△" },
+  other:        { label: "Egyéb",     color: "#94A3B8", icon: "▫" },
 } as const
 
 export const ROLES = {
