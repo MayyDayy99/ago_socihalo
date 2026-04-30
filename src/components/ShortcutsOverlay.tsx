@@ -32,10 +32,10 @@ export default function ShortcutsOverlay({ onClose }: Props) {
         exit={{ opacity: 0, scale: 0.96 }}
         transition={{ duration: 0.15 }}
         onClick={e => e.stopPropagation()}
-        className="bg-surface border border-border rounded-xl w-full max-w-md font-mono shadow-2xl overflow-hidden"
+        className="bg-surface border border-border rounded-xl w-full max-w-md shadow-2xl overflow-hidden"
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <span className="text-text font-bold text-sm font-serif">Billentyűparancsok</span>
+          <span className="text-text font-bold text-sm">Billentyűparancsok</span>
           <kbd
             onClick={onClose}
             className="text-xs text-muted border border-border rounded px-1.5 py-0.5 cursor-pointer hover:text-text"

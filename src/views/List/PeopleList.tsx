@@ -78,7 +78,7 @@ export default function PeopleList() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-app font-mono">
+    <div className="h-full flex flex-col bg-app">
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-border">
         <span className="text-sm text-muted">{sorted.length} / {people.length} személy</span>
@@ -150,7 +150,7 @@ function PersonRow({ person: p, degree, isSelected, onSelect }: { person: Person
         ${p.archived ? "opacity-40" : ""}
       `}
     >
-      <td className="px-3 py-2 text-text font-medium font-serif">{p.display_name}</td>
+      <td className="px-3 py-2 text-text font-medium">{p.display_name}</td>
       <td className="px-3 py-2">
         {group ? (
           <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: group.color + "22", color: group.color }}>

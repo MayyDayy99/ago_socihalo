@@ -2,7 +2,7 @@ import { GROUPS, ROLES } from "../../lib/constants"
 
 export default function Legend() {
   return (
-    <div className="absolute bottom-4 left-4 bg-surface/90 backdrop-blur border border-border rounded-lg p-3 text-xs font-mono space-y-3 max-w-[180px]">
+    <div className="absolute bottom-4 left-4 bg-surface/90 backdrop-blur border border-border rounded-lg p-3 text-xs space-y-3 max-w-[180px]">
       <div>
         <p className="text-muted uppercase tracking-wider mb-1.5">Csoportok</p>
         <div className="space-y-1">

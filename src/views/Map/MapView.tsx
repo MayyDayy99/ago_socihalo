@@ -348,15 +348,16 @@ export default function MapView() {
           {/* Nodes — wrapped in data-attr group so zoom filter can detect node clicks */}
           {nodesRef.current.map(n => {
             const pos = nodePositions.get(n.id) ?? { x: 0, y: 0 }
-            const dimmed = hoveredId !== null && neighborSet
-              ? !neighborSet.has(n.id)
-              : false
-            const inPath = pathSet?.has(n.id) ?? false
             const isSel = selectedPersonId === n.id
             const isSrc = connectFromId === n.id
             // Drop-target preview: in connect mode, hovering a node that is
             // not the source — visual cue to "click here to link"
             const isDrop = connectMode && !!connectFromId && hoveredId === n.id && connectFromId !== n.id
+            // Don't dim the connect source — it must stay visible while picking the target
+            const dimmed = hoveredId !== null && neighborSet && !isSrc
+              ? !neighborSet.has(n.id)
+              : false
+            const inPath = pathSet?.has(n.id) ?? false
             return (
               <g key={n.id} data-node-id={n.id}>
                 <Node
@@ -389,8 +390,8 @@ export default function MapView() {
             height={size.h}
           />
 
-          {/* Stats footer */}
-          <div className="absolute bottom-4 right-4 text-xs text-muted bg-surface/80 backdrop-blur border border-border rounded px-2.5 py-1 pointer-events-none">
+          {/* Stats footer — bottom center, between Legend (left) and MiniMap (right) */}
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-muted bg-surface/85 backdrop-blur border border-border rounded px-2.5 py-1 pointer-events-none">
             {filteredPeople.length} személy · {filteredConnections.length} kapcsolat
             {filteredPeople.length !== people.length && (
               <span className="ml-1 text-accent">(szűrve)</span>

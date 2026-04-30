@@ -62,7 +62,7 @@ export default function ImportWizard() {
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-app font-mono p-6">
+    <div className="h-full overflow-y-auto bg-app p-6">
       <div className="max-w-lg mx-auto">
         <h1 className="text-lg font-bold text-text mb-1">Névjegyek importálása</h1>
         <p className="text-muted text-sm mb-6">Töltsd fel meglévő kapcsolataidat egyszerre</p>

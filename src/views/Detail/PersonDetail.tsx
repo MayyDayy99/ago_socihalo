@@ -135,9 +135,12 @@ export default function PersonDetail() {
 
   function startConnect() {
     if (!person) return
+    const sourceId = person.id
     setActiveView("map")
     setConnectMode(true)
-    setConnectFromId(person.id)
+    setConnectFromId(sourceId)
+    // Close the panel so the entire map is reachable for picking the target
+    setSelectedPersonId(null)
   }
 
   function addTag() {
@@ -393,6 +396,8 @@ export default function PersonDetail() {
             }
             setPathHighlight(path)
             setActiveView("map")
+            // Close the panel so the highlighted route is fully visible
+            setSelectedPersonId(null)
             toast.success(`Útvonal: ${path.length - 1} lépés`)
           }}
           onCancel={() => setPathDialogOpen(false)}

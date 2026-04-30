@@ -11,7 +11,7 @@ function StatCard({ label, value, sub }: { label: string; value: string | number
   return (
     <div className="bg-surface border border-border rounded-lg p-4 shadow-card border-l-2 border-l-accent/50">
       <p className="text-xs text-muted uppercase tracking-widest mb-1.5">{label}</p>
-      <p className="text-3xl font-bold text-text font-serif leading-none">{value}</p>
+      <p className="text-3xl font-bold text-text leading-none">{value}</p>
       {sub && <p className="text-xs text-muted mt-1.5 leading-relaxed">{sub}</p>}
     </div>
   )
@@ -50,7 +50,7 @@ export default function AnalyticsView() {
 
   if (isLoading) {
     return (
-      <div className="h-full overflow-y-auto bg-app font-mono p-6">
+      <div className="h-full overflow-y-auto bg-app p-6">
         <div className="h-6 w-48 bg-surface-2 rounded animate-pulse mb-6" />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
           {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
@@ -74,8 +74,8 @@ export default function AnalyticsView() {
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-app font-mono p-6">
-      <h1 className="text-xl font-bold text-text mb-6 font-serif">Hálózat elemzése</h1>
+    <div className="h-full overflow-y-auto bg-app p-6">
+      <h1 className="text-xl font-bold text-text mb-6">Hálózat elemzése</h1>
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
@@ -92,7 +92,7 @@ export default function AnalyticsView() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         {/* Top connectors */}
         <div className="bg-surface border border-border rounded-lg p-4">
-          <h2 className="text-sm font-bold text-text font-serif mb-3">Top összekötők (legtöbb kapcsolat)</h2>
+          <h2 className="text-sm font-bold text-text mb-3">Top összekötők (legtöbb kapcsolat)</h2>
           <div className="space-y-2">
             {metrics.topConnectors.slice(0, 10).map(({ person, degree }, i) => (
               <div key={person.id} className="flex items-center gap-2">
@@ -120,7 +120,7 @@ export default function AnalyticsView() {
 
         {/* Top bridges */}
         <div className="bg-surface border border-border rounded-lg p-4">
-          <h2 className="text-sm font-bold text-text font-serif mb-3">Híd-személyek (betweenness)</h2>
+          <h2 className="text-sm font-bold text-text mb-3">Híd-személyek (betweenness)</h2>
           <div className="space-y-2">
             {metrics.topBridges.slice(0, 10).map(({ person, score }, i) => (
               <div key={person.id} className="flex items-center gap-2">
@@ -150,7 +150,7 @@ export default function AnalyticsView() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Group distribution */}
         <div className="bg-surface border border-border rounded-lg p-4">
-          <h2 className="text-sm font-bold text-text font-serif mb-3">Csoportok szerinti megoszlás</h2>
+          <h2 className="text-sm font-bold text-text mb-3">Csoportok szerinti megoszlás</h2>
           <div className="space-y-2">
             {groupDist.map(({ key, g, count, pct }) => (
               <div key={key} className="space-y-1">
@@ -168,7 +168,7 @@ export default function AnalyticsView() {
 
         {/* Role distribution */}
         <div className="bg-surface border border-border rounded-lg p-4">
-          <h2 className="text-sm font-bold text-text font-serif mb-3">Szerepek megoszlása</h2>
+          <h2 className="text-sm font-bold text-text mb-3">Szerepek megoszlása</h2>
           {roleDist.length === 0 ? (
             <p className="text-muted text-sm">Még egyetlen személynek sincs szerepe beállítva.</p>
           ) : (

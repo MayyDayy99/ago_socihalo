@@ -40,15 +40,16 @@ export default function ConnectionDialog({ fromId, toId, people, onConfirm, onCa
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onCancel}>
       <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
+        initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        transition={{ duration: 0.15 }}
-        className="bg-surface border border-border rounded-xl p-6 w-96 font-mono shadow-2xl"
+        exit={{ opacity: 0, scale: 0.96 }}
+        transition={{ duration: 0.12 }}
+        onClick={e => e.stopPropagation()}
+        className="bg-surface border border-border-strong rounded-xl p-6 w-96 shadow-panel"
       >
-        <h2 className="text-text font-bold mb-1">Kapcsolat létrehozása</h2>
+        <h2 className="text-text font-semibold mb-1">Kapcsolat létrehozása</h2>
         <p className="text-muted text-sm mb-5">
           {from?.display_name} ↔ {to?.display_name}
         </p>
@@ -59,14 +60,15 @@ export default function ConnectionDialog({ fromId, toId, people, onConfirm, onCa
             {TYPES.map(t => (
               <button
                 key={t.value}
+                type="button"
                 onClick={() => setType(t.value)}
                 style={type === t.value ? {
-                  background: CONNECTION_COLORS[t.value] + "33",
+                  background: CONNECTION_COLORS[t.value] + "1A",
                   borderColor: CONNECTION_COLORS[t.value],
                   color: CONNECTION_COLORS[t.value],
                 } : undefined}
                 className={`px-2 py-1.5 rounded text-xs border transition-colors ${
-                  type === t.value ? "" : "border-border text-muted hover:border-border-strong/30 hover:text-text"
+                  type === t.value ? "" : "border-border-strong text-muted hover:text-text hover:border-text/40"
                 }`}
               >
                 {t.label}
@@ -81,6 +83,7 @@ export default function ConnectionDialog({ fromId, toId, people, onConfirm, onCa
             type="range" min={1} max={5} value={strength}
             onChange={e => setStrength(Number(e.target.value))}
             className="w-full accent-accent"
+            aria-label="Kapcsolat erőssége"
           />
           <div className="flex justify-between text-xs text-muted mt-1">
             <span>Gyenge</span><span>Erős</span>
@@ -92,15 +95,15 @@ export default function ConnectionDialog({ fromId, toId, people, onConfirm, onCa
           <input
             value={context}
             onChange={e => setContext(e.target.value)}
-            placeholder="pl. Egyetemen ismerkedtük meg"
-            className="w-full bg-app border border-border rounded px-3 py-2 text-sm text-text placeholder-muted focus:outline-none focus:border-accent font-mono"
+            placeholder="pl. Egyetemen ismerkedtünk meg"
+            className="w-full bg-surface border border-border-strong rounded px-3 py-1.5 text-sm text-text placeholder-muted focus:outline-none focus:border-accent"
           />
         </div>
 
         <div className="flex gap-2 justify-end">
           <Button variant="ghost" onClick={onCancel}>Mégse</Button>
           <Button variant="primary" onClick={handle} disabled={loading}>
-            {loading ? "Mentés..." : "Létrehozás"}
+            {loading ? "Mentés…" : "Létrehozás"}
           </Button>
         </div>
       </motion.div>

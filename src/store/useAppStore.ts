@@ -60,7 +60,7 @@ export const useAppStore = create<AppStore>((set) => ({
   resetFilters: () => set({ filters: defaultFilters }),
 
   connectMode: false,
-  setConnectMode: (v) => set({ connectMode: v, connectFromId: v ? null : null }),
+  setConnectMode: (v) => set({ connectMode: v }),
   connectFromId: null,
   setConnectFromId: (id) => set({ connectFromId: id }),
 
