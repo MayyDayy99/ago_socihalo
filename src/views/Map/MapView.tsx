@@ -52,6 +52,8 @@ export default function MapView() {
   const transformRafRef = useRef<number | null>(null)
   // Tracks which person ids have been auto-pinned this session (so we don't keep firing mutations).
   const autoPinnedRef = useRef<Set<string>>(new Set())
+  // For "tap empty space → close panel": remember pointer-down position so we can detect a real tap (not a pan).
+  const bgPointerDownRef = useRef<{ x: number; y: number } | null>(null)
 
   // Container size — observe parent
   useEffect(() => {
@@ -385,6 +387,17 @@ export default function MapView() {
         height="100%"
         className="block"
         style={{ cursor, touchAction: "none" }}
+        onPointerDown={(e) => { bgPointerDownRef.current = { x: e.clientX, y: e.clientY } }}
+        onClick={(e) => {
+          // Click landed on a node (or any descendant of one) → let it handle itself
+          if ((e.target as Element).closest("[data-node-id]")) return
+          // If the user actually panned (>6 px movement), don't treat it as a tap
+          const start = bgPointerDownRef.current
+          bgPointerDownRef.current = null
+          if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 6) return
+          // Empty-space tap → close detail panel
+          setSelectedPersonId(null)
+        }}
       >
         {/* Background capture rect — anchors d3 zoom on empty space */}
         <rect width="100%" height="100%" fill="white" fillOpacity={0} pointerEvents="all" />

@@ -368,17 +368,18 @@ function ConnectionBeam({
   selected: boolean
   dragOverridesRef: React.MutableRefObject<Map<string, [number, number, number]>>
 }) {
-  // Pre-allocated buffers we mutate every frame — avoids per-tick allocations.
-  const lineRef = useRef<{ geometry: THREE.BufferGeometry } | null>(null)
-  const pointsRef = useRef<THREE.Vector3[]>(
-    Array.from({ length: BEAM_POINTS }, () => new THREE.Vector3())
-  )
+  // drei's <Line> wraps Line2 (LineGeometry under the hood). LineGeometry expects flat
+  // positions via setPositions(Float32Array) — using BufferGeometry.setFromPoints silently
+  // does nothing here. Hence the flat buffer + setPositions every frame.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const lineRef = useRef<any>(null)
+  const positionsBuf = useRef<Float32Array>(new Float32Array(BEAM_POINTS * 3))
   const a = useRef(new THREE.Vector3())
   const b = useRef(new THREE.Vector3())
   const mid = useRef(new THREE.Vector3())
+  const tmp = useRef(new THREE.Vector3())
   const curve = useRef(new THREE.QuadraticBezierCurve3())
 
-  // Each frame, read live positions (drag override > static prop) and rewrite the curve.
   useFrame(() => {
     const ovFrom = dragOverridesRef.current.get(connection.from_id)
     const ovTo   = dragOverridesRef.current.get(connection.to_id)
@@ -396,22 +397,34 @@ function ConnectionBeam({
     curve.current.v0 = a.current
     curve.current.v1 = mid.current
     curve.current.v2 = b.current
-    const pts = pointsRef.current
+
+    const buf = positionsBuf.current
     for (let i = 0; i < BEAM_POINTS; i++) {
-      curve.current.getPoint(i / (BEAM_POINTS - 1), pts[i])
+      curve.current.getPoint(i / (BEAM_POINTS - 1), tmp.current)
+      buf[i * 3]     = tmp.current.x
+      buf[i * 3 + 1] = tmp.current.y
+      buf[i * 3 + 2] = tmp.current.z
     }
+
     const line = lineRef.current
-    if (line && line.geometry) {
-      line.geometry.setFromPoints(pts)
-      line.geometry.computeBoundingSphere()
+    if (line && line.geometry && typeof line.geometry.setPositions === "function") {
+      line.geometry.setPositions(buf)
+      // For dashed lines the line distances need recomputing
+      if (typeof line.computeLineDistances === "function") line.computeLineDistances()
     }
   })
+
+  // Initial seed for `points` prop — drei needs at least 2 points to mount the geometry.
+  const initialPoints = useMemo<[number, number, number][]>(
+    () => Array.from({ length: BEAM_POINTS }, () => [0, 0, 0]),
+    []
+  )
 
   const strength = connection.strength ?? 3
   return (
     <Line
-      ref={lineRef as never}
-      points={pointsRef.current}
+      ref={lineRef}
+      points={initialPoints}
       color={color}
       lineWidth={selected ? Math.max(2.2, strength * 0.8) : 1.4}
       transparent
@@ -578,6 +591,8 @@ export default function Map3DView() {
   // Bypasses React reconciliation so dragging stays smooth.
   const dragOverridesRef = useRef<Map<string, [number, number, number]>>(new Map())
   const dragMovedRef     = useRef(false)
+  // Track pointer-down position so we can distinguish a tap (close panel) from a pan (don't)
+  const pointerDownRef   = useRef<{ x: number; y: number } | null>(null)
 
   const onPersonClick = useCallback((personId: string) => {
     // Suppress click immediately following a real drag (click fires on pointerup)
@@ -719,7 +734,22 @@ export default function Map3DView() {
         onCancel={() => { setConnectMode(false); setConnectFromId(null) }}
       />
 
-      <Canvas shadows camera={{ position: [6, 6, 7], fov: 42 }}>
+      <Canvas
+        shadows
+        camera={{ position: [6, 6, 7], fov: 42 }}
+        onPointerDown={(e) => { pointerDownRef.current = { x: e.clientX, y: e.clientY } }}
+        onPointerMissed={(e) => {
+          // Click on empty space (no avatar hit) → close detail panel.
+          // Skip if the user actually panned the camera.
+          const start = pointerDownRef.current
+          pointerDownRef.current = null
+          if (!start) return
+          const me = e as unknown as MouseEvent
+          const dist = Math.hypot(me.clientX - start.x, me.clientY - start.y)
+          if (dist > 6) return
+          setSelectedPersonId(null)
+        }}
+      >
         <Suspense fallback={null}>
           <Scene
             people={placedPeople}
