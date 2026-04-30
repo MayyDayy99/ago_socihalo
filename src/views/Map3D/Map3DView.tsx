@@ -1,5 +1,5 @@
 import { Canvas, useFrame, type ThreeEvent } from "@react-three/fiber"
-import { ContactShadows, Environment, Float, Html, Line, OrbitControls, RoundedBox, Text } from "@react-three/drei"
+import { Billboard, ContactShadows, Float, Html, Line, OrbitControls, RoundedBox, Text } from "@react-three/drei"
 import { Suspense, useMemo, useRef, useCallback, useState } from "react"
 import * as THREE from "three"
 import { usePeople, useUpdatePerson } from "../../hooks/usePeople"
@@ -74,7 +74,7 @@ function computePositions(people: Person[]): PersonWithPos[] {
   return out
 }
 
-// ── 3D person avatar ───────────────────────────────────────
+// ── 3D person avatar — head matches the 2D node, body grounds it in 3D ────
 function PersonAvatar({
   person, selected, dimmed, isSource, onSelect,
 }: {
@@ -94,73 +94,105 @@ function PersonAvatar({
     groupRef.current.rotation.y = Math.sin(t * 1.15 + walkPhase) * 0.035
   })
 
-  const groupColor = person.group_key ? GROUPS[person.group_key]?.color : "#6B7280"
-  // Deterministic gender variant for visual variety
-  const isFemale = person.idHash > 0.5
-  const skin = "#f0c2a4"
-  const body = isFemale ? "#d986ff" : "#62b8ff"
+  const groupColor = person.group_key ? GROUPS[person.group_key]?.color ?? "#6B7280" : "#6B7280"
+  const opacity = dimmed ? 0.3 : 1
+  const ringColor = isSource ? "#D97706" : selected ? "#111827" : groupColor
+  const ringWidth = isSource ? 0.06 : selected ? 0.05 : 0.04
 
-  const opacity = dimmed ? 0.28 : 1
-  const ringColor = isSource ? "#D97706" : selected ? "#111827" : (groupColor ?? "#6B7280")
+  // Initial letter (matches 2D node)
+  const initials = person.display_name
+    .split(/\s+/)
+    .map(w => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase()
+
+  // Body fill: light gray + faint group tint, matching the 2D node's "white with group tint" body
+  const bodyColor = "#E5E7EB"
+  const limbColor = "#9CA3AF"
 
   return (
     <group position={person.pos} onClick={onSelect}>
-      <Float speed={1.2} rotationIntensity={0.05} floatIntensity={selected || isSource ? 0.18 : 0.05}>
+      <Float speed={1.2} rotationIntensity={0.04} floatIntensity={selected || isSource ? 0.16 : 0.04}>
         <group ref={groupRef}>
-          {/* Floor ring under the person — colored by group/state */}
-          <mesh position={[0, 0.08, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[0.45, 0.62, 64]} />
-            <meshBasicMaterial color={ringColor} transparent opacity={isSource ? 0.85 : selected ? 0.7 : 0.18 * opacity} />
+          {/* Floor ring — colored by group/state, like the 2D node's outer ring */}
+          <mesh position={[0, 0.04, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.42, 0.5, 64]} />
+            <meshBasicMaterial
+              color={ringColor}
+              transparent
+              opacity={isSource ? 0.85 : selected ? 0.65 : 0.4 * opacity}
+            />
           </mesh>
 
           {/* Torso */}
-          <mesh position={[0, 0.3, 0]} scale={[0.22, 0.55, 0.18]}>
+          <mesh position={[0, 0.32, 0]} scale={[0.22, 0.55, 0.18]}>
             <capsuleGeometry args={[1, 1.25, 8, 18]} />
-            <meshStandardMaterial color={body} roughness={0.38} metalness={0.05} transparent opacity={opacity} />
+            <meshStandardMaterial color={bodyColor} roughness={0.6} metalness={0.0} transparent opacity={opacity} />
           </mesh>
 
           {/* Arms */}
-          <mesh position={[-0.34, 0.66, 0]} rotation={[0, 0, selected ? -0.32 : -0.12]}>
+          <mesh position={[-0.34, 0.68, 0]} rotation={[0, 0, selected ? -0.32 : -0.12]}>
             <capsuleGeometry args={[0.055, 0.36, 6, 10]} />
-            <meshStandardMaterial color={body} roughness={0.42} transparent opacity={opacity} />
+            <meshStandardMaterial color={limbColor} roughness={0.6} transparent opacity={opacity} />
           </mesh>
-          <mesh position={[0.34, 0.66, 0]} rotation={[0, 0, selected ? 0.32 : 0.12]}>
+          <mesh position={[0.34, 0.68, 0]} rotation={[0, 0, selected ? 0.32 : 0.12]}>
             <capsuleGeometry args={[0.055, 0.36, 6, 10]} />
-            <meshStandardMaterial color={body} roughness={0.42} transparent opacity={opacity} />
+            <meshStandardMaterial color={limbColor} roughness={0.6} transparent opacity={opacity} />
           </mesh>
 
           {/* Legs */}
-          <mesh position={[-0.13, -0.3, 0]} rotation={[0, 0, Math.sin(walkPhase) * 0.12]}>
+          <mesh position={[-0.13, -0.28, 0]} rotation={[0, 0, Math.sin(walkPhase) * 0.12]}>
             <capsuleGeometry args={[0.065, 0.42, 6, 10]} />
-            <meshStandardMaterial color="#2b344e" roughness={0.5} transparent opacity={opacity} />
+            <meshStandardMaterial color={limbColor} roughness={0.6} transparent opacity={opacity} />
           </mesh>
-          <mesh position={[0.13, -0.3, 0]} rotation={[0, 0, -Math.sin(walkPhase) * 0.12]}>
+          <mesh position={[0.13, -0.28, 0]} rotation={[0, 0, -Math.sin(walkPhase) * 0.12]}>
             <capsuleGeometry args={[0.065, 0.42, 6, 10]} />
-            <meshStandardMaterial color="#2b344e" roughness={0.5} transparent opacity={opacity} />
+            <meshStandardMaterial color={limbColor} roughness={0.6} transparent opacity={opacity} />
           </mesh>
 
-          {/* Head */}
-          <mesh position={[0, 1.05, 0]}>
-            <sphereGeometry args={[0.22, 32, 32]} />
-            <meshStandardMaterial color={skin} roughness={0.46} transparent opacity={opacity} />
-          </mesh>
-
-          {/* Hair */}
-          {isFemale ? (
-            <mesh position={[0, 1.14, -0.03]} scale={[1.18, 0.68, 1.04]}>
-              <sphereGeometry args={[0.24, 32, 16]} />
-              <meshStandardMaterial color="#312033" roughness={0.54} transparent opacity={opacity} />
+          {/* HEAD — Billboard so it always reads as the same flat 2D-style circle from any angle.
+              Matches the 2D node: white inner + group-color border + initial letter. */}
+          <Billboard position={[0, 1.05, 0]} follow={true}>
+            {/* Soft halo for selection / source — hidden when neither */}
+            {(isSource || selected) && (
+              <mesh position={[0, 0, -0.001]}>
+                <circleGeometry args={[0.34, 32]} />
+                <meshBasicMaterial color={ringColor} transparent opacity={isSource ? 0.18 : 0.12} />
+              </mesh>
+            )}
+            {/* White inner disc */}
+            <mesh>
+              <circleGeometry args={[0.24, 48]} />
+              <meshBasicMaterial color="#FFFFFF" transparent opacity={opacity} />
             </mesh>
-          ) : (
-            <mesh position={[0, 1.23, -0.01]} scale={[1.05, 0.38, 0.96]}>
-              <sphereGeometry args={[0.23, 32, 16]} />
-              <meshStandardMaterial color="#252232" roughness={0.54} transparent opacity={opacity} />
+            {/* Light group-color tint inside, matching 2D's fillOpacity 0.12 */}
+            <mesh position={[0, 0, 0.001]}>
+              <circleGeometry args={[0.24, 48]} />
+              <meshBasicMaterial color={groupColor} transparent opacity={0.12 * opacity} />
             </mesh>
-          )}
+            {/* Group color ring (border) */}
+            <mesh position={[0, 0, 0.002]}>
+              <ringGeometry args={[0.24, 0.24 + ringWidth, 48]} />
+              <meshBasicMaterial color={ringColor} transparent opacity={opacity} />
+            </mesh>
+            {/* Initial letter — group color, matches 2D node */}
+            <Text
+              position={[0, 0, 0.003]}
+              fontSize={0.18}
+              color={groupColor}
+              anchorX="center"
+              anchorY="middle"
+              fontWeight={700}
+            >
+              {initials}
+            </Text>
+          </Billboard>
 
-          {/* Name label floating above */}
-          <Html position={[0, 1.62, 0]} center distanceFactor={7.2} style={{ pointerEvents: "none" }}>
-            <div className={`person3d-label ${selected ? "selected" : ""} ${dimmed ? "dimmed" : ""} ${isSource ? "source" : ""}`}>
+          {/* Name label below — light office style (light bg + dark text) */}
+          <Html position={[0, -0.65, 0]} center distanceFactor={7.5} style={{ pointerEvents: "none" }}>
+            <div className={`person3d-label-light ${selected ? "selected" : ""} ${dimmed ? "dimmed" : ""} ${isSource ? "source" : ""}`}>
               {person.display_name}
             </div>
           </Html>
@@ -195,9 +227,9 @@ function ConnectionBeam({
     <Line
       points={points}
       color={color}
-      lineWidth={selected ? Math.max(1.8, strength * 0.7) : 1}
+      lineWidth={selected ? Math.max(2.2, strength * 0.8) : 1.4}
       transparent
-      opacity={dimmed ? 0.06 : selected ? 0.95 : 0.32}
+      opacity={dimmed ? 0.08 : selected ? 0.95 : 0.55}
       dashed={strength <= 2}
       dashSize={0.12}
       gapSize={0.08}
@@ -205,31 +237,8 @@ function ConnectionBeam({
   )
 }
 
-// ── Group zone discs on the floor ──────────────────────────
-function GroupZones({ counts }: { counts: Map<GroupKey, number> }) {
-  return (
-    <>
-      {(Object.keys(GROUP_3D) as GroupKey[]).map(k => {
-        const c = counts.get(k) ?? 0
-        if (c === 0) return null
-        const [cx, cz] = GROUP_3D[k].center
-        const color = GROUPS[k].color
-        const r = Math.min(2.0, 0.8 + c * 0.18)
-        return (
-          <group key={k}>
-            <mesh position={[cx, 0.012, cz]} rotation={[-Math.PI / 2, 0, 0]}>
-              <circleGeometry args={[r, 64]} />
-              <meshBasicMaterial color={color} transparent opacity={0.07} />
-            </mesh>
-            <Text position={[cx, 0.035, cz - r - 0.3]} rotation={[-Math.PI / 2, 0, 0]} fontSize={0.18} color={color}>
-              {GROUPS[k].label}
-            </Text>
-          </group>
-        )
-      })}
-    </>
-  )
-}
+// (Group zone discs were a 3D-only visual; removed for parity with the 2D view.
+//  The GROUP_3D centers above are still used as the seed positions for `placeInGroup`.)
 
 // ── Main scene ─────────────────────────────────────────────
 function Scene({
@@ -249,14 +258,6 @@ function Scene({
     return m
   }, [people])
 
-  const groupCounts = useMemo(() => {
-    const m = new Map<GroupKey, number>()
-    people.forEach(p => {
-      if (p.group_key) m.set(p.group_key, (m.get(p.group_key) ?? 0) + 1)
-    })
-    return m
-  }, [people])
-
   const neighborSet = useMemo(() => {
     if (!hoveredPersonId) return null
     const s = new Set<string>([hoveredPersonId])
@@ -269,26 +270,21 @@ function Scene({
 
   return (
     <>
-      <color attach="background" args={["#050813"]} />
-      <fog attach="fog" args={["#050813", 8, 18]} />
-      <ambientLight intensity={0.75} />
-      <directionalLight position={[3, 6, 5]} intensity={2.0} castShadow />
-      <pointLight position={[0, 3, -2]} intensity={1.4} color="#7ed3ff" />
-      <pointLight position={[-4, 2.2, 4]} intensity={0.9} color="#d986ff" />
+      <color attach="background" args={["#F5F5F5"]} />
+      <fog attach="fog" args={["#F5F5F5", 14, 28]} />
+      <ambientLight intensity={1.0} />
+      <directionalLight position={[5, 8, 4]} intensity={1.4} castShadow />
+      <directionalLight position={[-4, 6, -2]} intensity={0.4} />
 
-      {/* Floor + walls */}
-      <RoundedBox args={[11, 0.12, 9]} radius={0.12} position={[0, -0.08, 0]} receiveShadow>
-        <meshStandardMaterial color="#111827" roughness={0.72} metalness={0.1} />
+      {/* Light floor — matches the 2D map's bg-app + dot grid aesthetic */}
+      <RoundedBox args={[14, 0.06, 12]} radius={0.06} position={[0, -0.04, 0]} receiveShadow>
+        <meshStandardMaterial color="#FAFAFA" roughness={0.95} metalness={0.0} />
       </RoundedBox>
-      <gridHelper args={[11, 22, "#263653", "#182238"]} position={[0, 0.004, 0]} />
-      <RoundedBox args={[11, 3.1, 0.14]} radius={0.12} position={[0, 1.45, -4.5]}>
-        <meshStandardMaterial color="#0c1220" roughness={0.82} metalness={0.04} transparent opacity={0.82} />
-      </RoundedBox>
-      <RoundedBox args={[0.14, 3.1, 9]} radius={0.12} position={[-5.5, 1.45, 0]}>
-        <meshStandardMaterial color="#0b101c" roughness={0.86} metalness={0.04} transparent opacity={0.78} />
-      </RoundedBox>
-
-      <GroupZones counts={groupCounts} />
+      {/* Subtle dot/grid hint — same color as 2D's map-canvas radial-gradient dots */}
+      <gridHelper args={[14, 28, "#D1D5DB", "#E5E7EB"]} position={[0, 0.005, 0]} />
+      {/* Group zones are a 3D-only concept that the 2D view doesn't show — leave them out
+          for visual parity. Re-enable later if the user wants them as a colored zoning hint. */}
+      {/* <GroupZones counts={groupCounts} /> */}
 
       {/* Connections */}
       {connections.map(c => {
@@ -346,8 +342,8 @@ function Scene({
         )
       })}
 
-      <ContactShadows position={[0, -0.01, 0]} opacity={0.42} scale={11} blur={2.4} far={3.2} />
-      <Environment preset="city" />
+      <ContactShadows position={[0, 0.01, 0]} opacity={0.18} scale={14} blur={2.6} far={3.2} color="#1f2937" />
+      {/* No Environment HDRI — keeps the look matte / office-clean instead of cinematic. */}
       <OrbitControls
         makeDefault
         enablePan
@@ -401,7 +397,7 @@ export default function Map3DView() {
   const showEmpty   = !isLoading && people.length === 0
 
   return (
-    <div className="relative w-full h-full overflow-hidden" style={{ background: "#050813" }}>
+    <div className="relative w-full h-full overflow-hidden bg-app">
       <Toolbar />
 
       <ConnectModeBanner
@@ -424,17 +420,17 @@ export default function Map3DView() {
 
       {/* Stats footer */}
       {!showLoading && !showEmpty && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-white/80 bg-black/40 backdrop-blur border border-white/10 rounded px-2.5 py-1 pointer-events-none">
-          {people.length} személy · {connections.length} kapcsolat · 3D nézet
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-muted bg-surface/85 backdrop-blur border border-border rounded px-2.5 py-1 pointer-events-none">
+          {people.length} személy · {connections.length} kapcsolat
         </div>
       )}
 
       {/* Loading overlay */}
       {showLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none z-30">
+        <div className="absolute inset-0 flex items-center justify-center bg-app/80 backdrop-blur-sm pointer-events-none z-30">
           <div className="text-center">
             <div className="w-7 h-7 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-white/70 text-sm">3D szoba betöltése…</p>
+            <p className="text-muted text-sm">3D nézet betöltése…</p>
           </div>
         </div>
       )}
@@ -442,10 +438,10 @@ export default function Map3DView() {
       {/* Empty overlay */}
       {showEmpty && (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 z-30">
-          <span className="text-4xl mb-4 opacity-50 select-none">⬡</span>
-          <p className="text-white font-medium mb-1">Üres szoba</p>
-          <p className="text-white/60 text-sm mb-5 max-w-xs">
-            Adj hozzá személyeket — 3D-ben fognak megjelenni a csoportjuk zónájában.
+          <span className="text-4xl mb-4 opacity-30 select-none">⬡</span>
+          <p className="text-text font-medium mb-1">Üres szoba</p>
+          <p className="text-muted text-sm mb-5 max-w-xs">
+            Adj hozzá személyeket — 3D-ben is ugyanúgy megjelennek, mint a 2D nézetben.
           </p>
           <div className="flex gap-2">
             <Button variant="primary" size="sm" onClick={() => setCreatePersonOpen(true)}>

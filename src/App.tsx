@@ -7,11 +7,12 @@ import { useAppStore } from "./store/useAppStore"
 import { useIsMobile } from "./hooks/useIsMobile"
 
 import MagicLinkScreen   from "./views/Auth/MagicLinkScreen"
+import MapView           from "./views/Map/MapView"
 import MapModeToggle     from "./views/Map/MapModeToggle"
 import PeopleList        from "./views/List/PeopleList"
 
-// Unified 2D/3D map (R3F + three.js, ~1MB) — lazy so non-map views don't pay for it
-const MapUnifiedView = lazy(() => import("./views/MapUnified/MapUnifiedView"))
+// 3D view bundles three.js + react-three (~1MB) — lazy so 2D-only users never download it
+const Map3DView = lazy(() => import("./views/Map3D/Map3DView"))
 import AnalyticsView     from "./views/Analytics/AnalyticsView"
 import ImportWizard      from "./views/Import/ImportWizard"
 import SettingsView      from "./views/Settings/SettingsView"
@@ -58,6 +59,7 @@ function NexusLogo({ size = 18 }: { size?: number }) {
 function AppShell() {
   const {
     activeView, setActiveView,
+    mapMode,
     selectedPersonId,
     commandPaletteOpen, setCommandPaletteOpen,
   } = useAppStore()
@@ -155,16 +157,20 @@ function AppShell() {
           <ErrorBoundary>
             {activeView === "map" && (
               <>
-                <Suspense fallback={
-                  <div className="absolute inset-0 flex items-center justify-center bg-app">
-                    <div className="text-center">
-                      <div className="w-7 h-7 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                      <p className="text-muted text-sm">Térkép motor betöltése…</p>
+                {mapMode === "3d" ? (
+                  <Suspense fallback={
+                    <div className="absolute inset-0 flex items-center justify-center bg-app">
+                      <div className="text-center">
+                        <div className="w-7 h-7 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                        <p className="text-muted text-sm">3D motor betöltése…</p>
+                      </div>
                     </div>
-                  </div>
-                }>
-                  <MapUnifiedView />
-                </Suspense>
+                  }>
+                    <Map3DView />
+                  </Suspense>
+                ) : (
+                  <MapView />
+                )}
                 <MapModeToggle />
               </>
             )}

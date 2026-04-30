@@ -112,6 +112,25 @@ select option {
 .person3d-label.source   { border-color: rgba(217, 119, 6, 0.85); transform: scale(1.06); }
 .person3d-label.dimmed   { opacity: 0.45; }
 
+/* 3D label, light/office variant — used inside Map3DView so the label reads on the light floor */
+.person3d-label-light {
+  white-space: nowrap;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #E5E7EB;
+  color: #374151;
+  font-size: 11px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  transition: transform 0.18s ease, opacity 0.18s ease, border-color 0.18s ease;
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.person3d-label-light.selected { border-color: #2563EB; color: #111827; transform: scale(1.05); }
+.person3d-label-light.source   { border-color: #D97706; color: #92400E; transform: scale(1.04); }
+.person3d-label-light.dimmed   { opacity: 0.45; }
+
 input:focus, textarea:focus, select:focus {
   outline: none;
   box-shadow: 0 0 0 2px rgba(37,99,235,0.35);
