@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, lazy, Suspense } from "react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { AnimatePresence } from "framer-motion"
 import type { Session } from "@supabase/supabase-js"
@@ -8,7 +8,11 @@ import { useIsMobile } from "./hooks/useIsMobile"
 
 import MagicLinkScreen   from "./views/Auth/MagicLinkScreen"
 import MapView           from "./views/Map/MapView"
+import MapModeToggle     from "./views/Map/MapModeToggle"
 import PeopleList        from "./views/List/PeopleList"
+
+// 3D view bundles three.js + react-three (~500kb) — lazy load so 2D users never download it
+const Map3DView = lazy(() => import("./views/Map3D/Map3DView"))
 import AnalyticsView     from "./views/Analytics/AnalyticsView"
 import ImportWizard      from "./views/Import/ImportWizard"
 import SettingsView      from "./views/Settings/SettingsView"
@@ -55,6 +59,7 @@ function NexusLogo({ size = 18 }: { size?: number }) {
 function AppShell() {
   const {
     activeView, setActiveView,
+    mapMode,
     selectedPersonId,
     commandPaletteOpen, setCommandPaletteOpen,
   } = useAppStore()
@@ -148,9 +153,27 @@ function AppShell() {
 
       {/* Main content */}
       <div className={`flex-1 flex overflow-hidden ${isMobile ? "flex-col" : ""}`}>
-        <main className="flex-1 overflow-hidden min-w-0">
+        <main className="flex-1 overflow-hidden min-w-0 relative">
           <ErrorBoundary>
-            {activeView === "map"       && <MapView />}
+            {activeView === "map" && (
+              <>
+                {mapMode === "3d" ? (
+                  <Suspense fallback={
+                    <div className="absolute inset-0 flex items-center justify-center bg-app">
+                      <div className="text-center">
+                        <div className="w-7 h-7 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                        <p className="text-muted text-sm">3D motor betöltése…</p>
+                      </div>
+                    </div>
+                  }>
+                    <Map3DView />
+                  </Suspense>
+                ) : (
+                  <MapView />
+                )}
+                <MapModeToggle />
+              </>
+            )}
             {activeView === "list"      && <PeopleList />}
             {activeView === "analytics" && <AnalyticsView />}
             {activeView === "import"    && <ImportWizard />}

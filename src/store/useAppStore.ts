@@ -2,6 +2,14 @@ import { create } from "zustand"
 import type { GroupKey, RoleKey } from "../lib/constants"
 
 export type View = "map" | "list" | "analytics" | "import" | "settings"
+export type MapMode = "2d" | "3d"
+
+const MAP_MODE_KEY = "nexus.mapMode"
+function loadMapMode(): MapMode {
+  if (typeof localStorage === "undefined") return "2d"
+  const v = localStorage.getItem(MAP_MODE_KEY)
+  return v === "3d" ? "3d" : "2d"
+}
 
 interface FilterState {
   search: string
@@ -14,6 +22,9 @@ interface FilterState {
 interface AppStore {
   activeView: View
   setActiveView: (v: View) => void
+
+  mapMode: MapMode
+  setMapMode: (m: MapMode) => void
 
   selectedPersonId: string | null
   setSelectedPersonId: (id: string | null) => void
@@ -48,6 +59,12 @@ const defaultFilters: FilterState = {
 export const useAppStore = create<AppStore>((set) => ({
   activeView: "map",
   setActiveView: (v) => set({ activeView: v }),
+
+  mapMode: loadMapMode(),
+  setMapMode: (m) => {
+    if (typeof localStorage !== "undefined") localStorage.setItem(MAP_MODE_KEY, m)
+    set({ mapMode: m })
+  },
 
   selectedPersonId: null,
   setSelectedPersonId: (id) => set({ selectedPersonId: id }),
