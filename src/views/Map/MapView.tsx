@@ -50,6 +50,8 @@ export default function MapView() {
   const dragRef = useRef<{ id: string; sx: number; sy: number; moved: boolean } | null>(null)
   const tickRafRef = useRef<number | null>(null)
   const transformRafRef = useRef<number | null>(null)
+  // Tracks which person ids have been auto-pinned this session (so we don't keep firing mutations).
+  const autoPinnedRef = useRef<Set<string>>(new Set())
 
   // Container size — observe parent
   useEffect(() => {
@@ -118,6 +120,20 @@ export default function MapView() {
       .force("center", d3.forceCenter(0, 0))
       .on("tick", () => {
         nodesRef.current = sim.nodes()
+        // Once the simulation settles, persist positions for any people who don't yet have
+        // pinned_x/y in the DB. This way the 3D view (and any future device) inherits the
+        // exact same layout — relative distance and direction stay consistent across modes.
+        if (sim.alpha() < 0.04) {
+          for (const node of sim.nodes()) {
+            if (autoPinnedRef.current.has(node.id)) continue
+            const p = filteredPeople.find(x => x.id === node.id)
+            if (!p) continue
+            if (p.pinned_x !== null && p.pinned_y !== null) { autoPinnedRef.current.add(node.id); continue }
+            if (node.x === undefined || node.y === undefined) continue
+            autoPinnedRef.current.add(node.id)
+            updatePerson.mutate({ id: node.id, pinned_x: node.x, pinned_y: node.y })
+          }
+        }
         if (tickRafRef.current !== null) return
         tickRafRef.current = requestAnimationFrame(() => {
           tickRafRef.current = null

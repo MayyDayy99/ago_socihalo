@@ -1,6 +1,7 @@
-import { Canvas, useFrame, type ThreeEvent } from "@react-three/fiber"
+import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber"
 import { ContactShadows, Float, Html, Line, OrbitControls } from "@react-three/drei"
-import { Suspense, useMemo, useRef, useCallback, useState } from "react"
+import type { OrbitControls as OrbitControlsImpl } from "three/examples/jsm/controls/OrbitControls.js"
+import { Suspense, useMemo, useRef, useCallback, useState, useEffect } from "react"
 import * as THREE from "three"
 import { usePeople, useUpdatePerson } from "../../hooks/usePeople"
 import { useConnections, useCreateConnection } from "../../hooks/useConnections"
@@ -47,6 +48,33 @@ function placeInGroup(centerX: number, centerZ: number, idxInGroup: number, tota
 
 type PersonWithPos = Person & { pos: [number, number, number]; idHash: number }
 
+// World ↔ pixel scale conversion. d3-force in MapView produces pixel-scale
+// coordinates (~hundreds); the 3D scene works in ~10x10 world units. Same scale
+// used at read (×WORLD_SCALE) and write (÷WORLD_SCALE) so the two views stay
+// in lock-step on relative distance + direction.
+const WORLD_SCALE = 1 / 80   // pixel → world (matches /80 in computePositions)
+const LONG_PRESS_MS = 400
+
+// Refs we need from inside the Canvas, exposed back to the outer drag handler
+type SceneRefs = {
+  camera: THREE.Camera
+  gl: THREE.WebGLRenderer
+  controls: OrbitControlsImpl | null
+}
+
+function ThreeContextBridge({
+  refOut, controlsRefOut,
+}: {
+  refOut: React.MutableRefObject<SceneRefs | null>
+  controlsRefOut: React.MutableRefObject<OrbitControlsImpl | null>
+}) {
+  const { camera, gl } = useThree()
+  useEffect(() => {
+    refOut.current = { camera, gl, controls: controlsRefOut.current }
+  }, [camera, gl, refOut, controlsRefOut])
+  return null
+}
+
 function computePositions(people: Person[]): PersonWithPos[] {
   // Group by group_key
   const buckets = new Map<GroupKey | "_none", Person[]>()
@@ -90,15 +118,19 @@ function computePositions(people: Person[]): PersonWithPos[] {
 // Materials: MeshPhysicalMaterial with subtle clearcoat for matte clay/porcelain feel.
 
 function PersonAvatar({
-  person, selected, dimmed, isSource, hovered, onSelect,
+  person, selected, dimmed, isSource, hovered, pressed, dragOverridesRef, onSelect, onPointerDown,
 }: {
   person: PersonWithPos
   selected: boolean
   dimmed: boolean
   isSource: boolean
   hovered: boolean
+  pressed: boolean
+  dragOverridesRef: React.MutableRefObject<Map<string, [number, number, number]>>
   onSelect: (e: ThreeEvent<MouseEvent>) => void
+  onPointerDown: (e: ThreeEvent<PointerEvent>) => void
 }) {
+  const rootRef  = useRef<THREE.Group>(null)
   const groupRef = useRef<THREE.Group>(null)
   const scaleRef = useRef<THREE.Group>(null)
   const ringRef  = useRef<THREE.Mesh>(null)
@@ -120,19 +152,31 @@ function PersonAvatar({
     hovered   ? torsoColor :
     torsoColor
 
-  // Per-frame: idle bob, scale tween (hover/select), pulsing selection ring
+  // Per-frame: position (drag override or static), idle bob, scale tween, pulsing ring
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime()
+    if (rootRef.current) {
+      // Drag overrides take precedence over the prop position so dragging is smooth
+      // without round-tripping through React state.
+      const override = dragOverridesRef.current.get(person.id)
+      if (override) {
+        rootRef.current.position.set(override[0], 0, override[2])
+      } else {
+        rootRef.current.position.set(person.pos[0], 0, person.pos[2])
+      }
+    }
     if (groupRef.current) {
-      groupRef.current.position.y = Math.sin(t * 1.6 + walkPhase) * 0.020
+      // Suppress idle bob while dragging to keep the figure stable under the cursor
+      const dragging = dragOverridesRef.current.has(person.id)
+      groupRef.current.position.y = dragging ? 0 : Math.sin(t * 1.6 + walkPhase) * 0.020
     }
     if (scaleRef.current) {
-      const target = selected ? 1.08 : hovered ? 1.02 : 1.0
+      const target = pressed || selected ? 1.08 : hovered ? 1.02 : 1.0
       const cur = scaleRef.current.scale.x
       const next = THREE.MathUtils.lerp(cur, target, 0.18)
       scaleRef.current.scale.setScalar(next)
     }
-    if (ringRef.current && (selected || isSource)) {
+    if (ringRef.current && (selected || isSource || pressed)) {
       const s = 1 + Math.sin(t * 2.4) * 0.05
       ringRef.current.scale.x = s
       ringRef.current.scale.z = s
@@ -143,7 +187,7 @@ function PersonAvatar({
   })
 
   return (
-    <group position={person.pos} onClick={onSelect}>
+    <group ref={rootRef} position={person.pos} onClick={onSelect} onPointerDown={onPointerDown}>
       <Float speed={0.9} rotationIntensity={0.02} floatIntensity={selected || isSource ? 0.08 : 0.03}>
         <group ref={groupRef}>
           <group ref={scaleRef}>
@@ -351,13 +395,19 @@ function ConnectionBeam({
 
 // ── Main scene ─────────────────────────────────────────────
 function Scene({
-  people, connections, onPersonClick, hoveredPersonId, setHovered,
+  people, connections, onPersonClick, onPersonPointerDown, hoveredPersonId, setHovered,
+  pressedId, dragOverridesRef, controlsRef, sceneRefsRef,
 }: {
   people: PersonWithPos[]
   connections: Connection[]
   onPersonClick: (id: string) => void
+  onPersonPointerDown: (id: string, e: ThreeEvent<PointerEvent>) => void
   hoveredPersonId: string | null
   setHovered: (id: string | null) => void
+  pressedId: string | null
+  dragOverridesRef: React.MutableRefObject<Map<string, [number, number, number]>>
+  controlsRef: React.MutableRefObject<OrbitControlsImpl | null>
+  sceneRefsRef: React.MutableRefObject<SceneRefs | null>
 }) {
   const { selectedPersonId, connectFromId } = useAppStore()
 
@@ -437,8 +487,11 @@ function Scene({
               selected={isSel}
               isSource={isSrc}
               hovered={hoveredPersonId === p.id}
+              pressed={pressedId === p.id}
               dimmed={!!dimmed}
+              dragOverridesRef={dragOverridesRef}
               onSelect={(e) => { e.stopPropagation(); onPersonClick(p.id) }}
+              onPointerDown={(e) => { e.stopPropagation(); onPersonPointerDown(p.id, e) }}
             />
           </group>
         )
@@ -448,7 +501,9 @@ function Scene({
           catalog-style foot shadow without needing a visible floor. */}
       <ContactShadows position={[0, 0.001, 0]} opacity={0.32} scale={50} blur={2.0} far={2.0} resolution={1024} color="#0f172a" />
       {/* No Environment HDRI — keeps the look matte / clean instead of cinematic. */}
+      <ThreeContextBridge refOut={sceneRefsRef} controlsRefOut={controlsRef} />
       <OrbitControls
+        ref={controlsRef as never}
         makeDefault
         enablePan
         enableZoom
@@ -478,10 +533,21 @@ export default function Map3DView() {
 
   const [pendingConn, setPendingConn] = useState<{ fromId: string; toId: string } | null>(null)
   const [hoveredPersonId, setHoveredPersonId] = useState<string | null>(null)
+  const [pressedId, setPressedId] = useState<string | null>(null)
 
   const placedPeople = useMemo(() => computePositions(people), [people])
 
+  // Refs for the in-canvas pieces we need from outside (drag raycasting, controls toggling)
+  const sceneRefsRef     = useRef<SceneRefs | null>(null)
+  const controlsRef      = useRef<OrbitControlsImpl | null>(null)
+  // Live drag positions (world units) — read every frame by PersonAvatar via useFrame.
+  // Bypasses React reconciliation so dragging stays smooth.
+  const dragOverridesRef = useRef<Map<string, [number, number, number]>>(new Map())
+  const dragMovedRef     = useRef(false)
+
   const onPersonClick = useCallback((personId: string) => {
+    // Suppress click immediately following a real drag (click fires on pointerup)
+    if (dragMovedRef.current) return
     if (connectMode) {
       if (!connectFromId) {
         setConnectFromId(personId)
@@ -496,8 +562,115 @@ export default function Map3DView() {
     }
   }, [connectMode, connectFromId, setConnectFromId, setConnectMode, setSelectedPersonId])
 
-  // Quietly mute the unused-warning for updatePerson — wire up later if we add 3D drag-to-pin
-  void updatePerson
+  // Drag: raycast against the y=0 plane to convert pointer position → world coords.
+  // Long-press (400ms) gating on touch so a tap stays a tap.
+  const onPersonPointerDown = useCallback((personId: string, e: ThreeEvent<PointerEvent>) => {
+    const native = e.nativeEvent as PointerEvent
+    if (native.shiftKey) {
+      setConnectFromId(personId)
+      setConnectMode(true)
+      return
+    }
+    if (connectMode) return
+
+    const isTouch = native.pointerType === "touch"
+    const longPressMs = isTouch ? LONG_PRESS_MS : 0
+    const moveThreshold = isTouch ? 8 : 2
+    let dragActive = !isTouch
+    let pinnedThisGesture = false
+    let moved = false
+    const start = { x: native.clientX, y: native.clientY }
+    dragMovedRef.current = false
+
+    const refs = sceneRefsRef.current
+    if (!refs) return
+    const rect = refs.gl.domElement.getBoundingClientRect()
+    const raycaster = new THREE.Raycaster()
+    const ndc = new THREE.Vector2()
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+    const hit = new THREE.Vector3()
+
+    function pinAtPointer(clientX: number, clientY: number) {
+      ndc.set(
+        ((clientX - rect.left) / rect.width) * 2 - 1,
+        -((clientY - rect.top) / rect.height) * 2 + 1,
+      )
+      raycaster.setFromCamera(ndc, refs!.camera)
+      if (!raycaster.ray.intersectPlane(plane, hit)) return
+      dragOverridesRef.current.set(personId, [hit.x, 0, hit.z])
+      pinnedThisGesture = true
+    }
+
+    let longPressTimer: number | null = null
+    if (isTouch) {
+      setPressedId(personId)
+      longPressTimer = window.setTimeout(() => {
+        longPressTimer = null
+        dragActive = true
+        if (controlsRef.current) controlsRef.current.enabled = false
+        navigator.vibrate?.(15)
+        pinAtPointer(start.x, start.y)
+      }, longPressMs)
+    } else {
+      // Mouse: disable orbit immediately so it doesn't fight the drag
+      if (controlsRef.current) controlsRef.current.enabled = false
+    }
+
+    function cancelLongPress() {
+      if (longPressTimer !== null) { clearTimeout(longPressTimer); longPressTimer = null }
+    }
+
+    function onMove(me: PointerEvent) {
+      if (me.pointerId !== native.pointerId) return
+      const dx = me.clientX - start.x
+      const dy = me.clientY - start.y
+      const dist = Math.hypot(dx, dy)
+      if (dist > moveThreshold) moved = true
+      // Touch: movement before long-press fires → user is panning, abort drag attempt
+      if (isTouch && !dragActive && moved) {
+        cancelLongPress()
+        cleanup()
+        return
+      }
+      if (!dragActive) return
+      pinAtPointer(me.clientX, me.clientY)
+    }
+
+    function onUp(me: PointerEvent) {
+      if (me.pointerId !== native.pointerId) return
+      cancelLongPress()
+      if (moved && dragActive && pinnedThisGesture) {
+        const pos = dragOverridesRef.current.get(personId)
+        if (pos) {
+          // World units → pixel units (the scale 2D's d3-force uses)
+          const pinned_x = pos[0] / WORLD_SCALE
+          const pinned_y = pos[2] / WORLD_SCALE
+          updatePerson.mutate({ id: personId, pinned_x, pinned_y })
+        }
+        dragMovedRef.current = true
+        // Clear the click-suppression flag a tick later so onClick fires after this returns
+        setTimeout(() => { dragMovedRef.current = false }, 0)
+      }
+      cleanup()
+    }
+
+    function cleanup() {
+      // Keep override on screen briefly so the avatar doesn't snap before DB roundtrip
+      // — react-query's onSuccess will refresh `people` with the new pinned position,
+      //   and the next render's `placedPeople` recomputation will match the override.
+      // Then we can clear it.
+      setTimeout(() => { dragOverridesRef.current.delete(personId) }, 600)
+      setPressedId(null)
+      if (controlsRef.current) controlsRef.current.enabled = true
+      window.removeEventListener("pointermove", onMove)
+      window.removeEventListener("pointerup", onUp)
+      window.removeEventListener("pointercancel", onUp)
+    }
+
+    window.addEventListener("pointermove", onMove)
+    window.addEventListener("pointerup", onUp)
+    window.addEventListener("pointercancel", onUp)
+  }, [connectMode, setConnectFromId, setConnectMode, updatePerson])
 
   const showLoading = isLoading
   const showEmpty   = !isLoading && people.length === 0
@@ -518,8 +691,13 @@ export default function Map3DView() {
             people={placedPeople}
             connections={connections}
             onPersonClick={onPersonClick}
+            onPersonPointerDown={onPersonPointerDown}
             hoveredPersonId={hoveredPersonId}
             setHovered={setHoveredPersonId}
+            pressedId={pressedId}
+            dragOverridesRef={dragOverridesRef}
+            controlsRef={controlsRef}
+            sceneRefsRef={sceneRefsRef}
           />
         </Suspense>
       </Canvas>
