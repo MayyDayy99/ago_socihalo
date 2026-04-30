@@ -1,5 +1,5 @@
 import { Canvas, useFrame, type ThreeEvent } from "@react-three/fiber"
-import { Billboard, ContactShadows, Float, Html, Line, OrbitControls, Text } from "@react-three/drei"
+import { ContactShadows, Float, Html, Line, OrbitControls } from "@react-three/drei"
 import { Suspense, useMemo, useRef, useCallback, useState } from "react"
 import * as THREE from "three"
 import { usePeople, useUpdatePerson } from "../../hooks/usePeople"
@@ -74,153 +74,235 @@ function computePositions(people: Person[]): PersonWithPos[] {
   return out
 }
 
-// ── 3D person avatar — head matches the 2D node, body grounds it in 3D ────
+// ── 3D person avatar — premium minimalist pictogram per spec ─────────────
+//
+// Anatomy (ground = y=0, total height ≈ 1.42 world units):
+//   feet   y 0.00 → 0.05    (small flattened spheres)
+//   legs   y 0.05 → 0.50    (capsules)
+//   hips   y ≈ 0.50         (smoothing dome)
+//   torso  y 0.45 → 1.05    (tapered capsule, slightly slimmed front-to-back)
+//   shoulders y ≈ 1.05      (caps + arm joints)
+//   arms   y 1.05 → 0.62    (capsules hanging slightly outward)
+//   hands  y ≈ 0.60         (skin-tone spheres)
+//   neck   y 1.05 → 1.10    (short cylinder, skin tone)
+//   head   y 1.10 → 1.43    (sphere, skin tone, optional female hair)
+//
+// Materials: MeshPhysicalMaterial with subtle clearcoat for matte clay/porcelain feel.
+
 function PersonAvatar({
-  person, selected, dimmed, isSource, onSelect,
+  person, selected, dimmed, isSource, hovered, onSelect,
 }: {
   person: PersonWithPos
   selected: boolean
   dimmed: boolean
   isSource: boolean
+  hovered: boolean
   onSelect: (e: ThreeEvent<MouseEvent>) => void
 }) {
   const groupRef = useRef<THREE.Group>(null)
+  const scaleRef = useRef<THREE.Group>(null)
+  const ringRef  = useRef<THREE.Mesh>(null)
   const walkPhase = person.idHash * Math.PI * 2
+  const isFemale = person.idHash > 0.5
 
-  // Subtle vertical bob only — no rotation sway (cleaner, calmer look)
+  // Spec palette
+  const skin       = "#EAC1A2"
+  const skinShadow = "#C99678"
+  const legColor   = "#27324A"
+  const footColor  = "#1B2234"
+  // Torso uses the group color for in-app identity (matches 2D node border color)
+  const torsoColor = person.group_key ? GROUPS[person.group_key]?.color ?? "#7ED3FF" : "#7ED3FF"
+
+  const opacity = dimmed ? 0.32 : 1
+  const ringColor =
+    isSource  ? "#D97706" :
+    selected  ? "#B7ECFF" :   // spec selection-glow cyan
+    hovered   ? torsoColor :
+    torsoColor
+
+  // Per-frame: idle bob, scale tween (hover/select), pulsing selection ring
   useFrame(({ clock }) => {
-    if (!groupRef.current) return
     const t = clock.getElapsedTime()
-    groupRef.current.position.y = Math.sin(t * 1.6 + walkPhase) * 0.022
+    if (groupRef.current) {
+      groupRef.current.position.y = Math.sin(t * 1.6 + walkPhase) * 0.020
+    }
+    if (scaleRef.current) {
+      const target = selected ? 1.08 : hovered ? 1.02 : 1.0
+      const cur = scaleRef.current.scale.x
+      const next = THREE.MathUtils.lerp(cur, target, 0.18)
+      scaleRef.current.scale.setScalar(next)
+    }
+    if (ringRef.current && (selected || isSource)) {
+      const s = 1 + Math.sin(t * 2.4) * 0.05
+      ringRef.current.scale.x = s
+      ringRef.current.scale.z = s
+    } else if (ringRef.current) {
+      ringRef.current.scale.x = 1
+      ringRef.current.scale.z = 1
+    }
   })
 
-  const groupColor = person.group_key ? GROUPS[person.group_key]?.color ?? "#6B7280" : "#6B7280"
-  const opacity = dimmed ? 0.32 : 1
-  const ringColor = isSource ? "#D97706" : selected ? "#111827" : groupColor
-  const ringWidth = isSource ? 0.06 : selected ? 0.05 : 0.04
-
-  // Initial letter (matches 2D node)
-  const initials = person.display_name
-    .split(/\s+/)
-    .map(w => w[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase()
-
-  // Subtle palette — body slightly lighter than limbs so the silhouette reads
-  const bodyColor = "#E5E7EB"
-  const limbColor = "#B5BBC5"
-  const jointColor = "#CBD0D8"
-
-  // Refined proportions — taller, slimmer, arms hanging naturally close to body.
-  // Total height ~1.7 units (head top ≈ 1.32, feet bottom ≈ -0.42).
   return (
     <group position={person.pos} onClick={onSelect}>
-      <Float speed={1.0} rotationIntensity={0.02} floatIntensity={selected || isSource ? 0.10 : 0.03}>
+      <Float speed={0.9} rotationIntensity={0.02} floatIntensity={selected || isSource ? 0.08 : 0.03}>
         <group ref={groupRef}>
-          {/* Floor ring — colored by group/state, like the 2D node's outer ring */}
-          <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[0.36, 0.44, 64]} />
-            <meshBasicMaterial
-              color={ringColor}
-              transparent
-              opacity={isSource ? 0.85 : selected ? 0.65 : 0.32 * opacity}
-            />
-          </mesh>
+          <group ref={scaleRef}>
 
-          {/* Torso — taller, slimmer capsule */}
-          <mesh position={[0, 0.5, 0]} scale={[0.20, 0.78, 0.15]} castShadow>
-            <capsuleGeometry args={[1, 1.20, 12, 24]} />
-            <meshStandardMaterial color={bodyColor} roughness={0.55} metalness={0} transparent opacity={opacity} />
-          </mesh>
+            {/* Ground ring — pulses on selection / source */}
+            <mesh ref={ringRef} position={[0, 0.005, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[0.30, 0.42, 64]} />
+              <meshBasicMaterial
+                color={ringColor}
+                transparent
+                opacity={isSource ? 0.75 : selected ? 0.6 : hovered ? 0.4 : 0.22 * opacity}
+              />
+            </mesh>
 
-          {/* Shoulder caps — small spheres that smooth the torso→arm transition */}
-          <mesh position={[-0.20, 0.83, 0]} castShadow>
-            <sphereGeometry args={[0.062, 16, 16]} />
-            <meshStandardMaterial color={jointColor} roughness={0.55} transparent opacity={opacity} />
-          </mesh>
-          <mesh position={[0.20, 0.83, 0]} castShadow>
-            <sphereGeometry args={[0.062, 16, 16]} />
-            <meshStandardMaterial color={jointColor} roughness={0.55} transparent opacity={opacity} />
-          </mesh>
+            {/* Feet — small flattened ovals pointing slightly forward (+z) */}
+            <mesh position={[-0.075, 0.025, 0.018]} scale={[1.4, 0.5, 1.7]} castShadow>
+              <sphereGeometry args={[0.06, 16, 16]} />
+              <meshStandardMaterial color={footColor} roughness={0.7} transparent opacity={opacity} />
+            </mesh>
+            <mesh position={[0.075, 0.025, 0.018]} scale={[1.4, 0.5, 1.7]} castShadow>
+              <sphereGeometry args={[0.06, 16, 16]} />
+              <meshStandardMaterial color={footColor} roughness={0.7} transparent opacity={opacity} />
+            </mesh>
 
-          {/* Arms — slim, hanging naturally (very small outward angle) */}
-          <mesh position={[-0.20, 0.55, 0]} rotation={[0, 0, -0.045]} castShadow>
-            <capsuleGeometry args={[0.045, 0.5, 8, 16]} />
-            <meshStandardMaterial color={limbColor} roughness={0.55} transparent opacity={opacity} />
-          </mesh>
-          <mesh position={[0.20, 0.55, 0]} rotation={[0, 0, 0.045]} castShadow>
-            <capsuleGeometry args={[0.045, 0.5, 8, 16]} />
-            <meshStandardMaterial color={limbColor} roughness={0.55} transparent opacity={opacity} />
-          </mesh>
+            {/* Legs — slim capsules */}
+            <mesh position={[-0.075, 0.27, 0]} castShadow>
+              <capsuleGeometry args={[0.06, 0.36, 10, 18]} />
+              <meshPhysicalMaterial
+                color={legColor}
+                roughness={0.65}
+                metalness={0.04}
+                clearcoat={0.12}
+                clearcoatRoughness={0.4}
+                transparent
+                opacity={opacity}
+              />
+            </mesh>
+            <mesh position={[0.075, 0.27, 0]} castShadow>
+              <capsuleGeometry args={[0.06, 0.36, 10, 18]} />
+              <meshPhysicalMaterial
+                color={legColor}
+                roughness={0.65}
+                metalness={0.04}
+                clearcoat={0.12}
+                clearcoatRoughness={0.4}
+                transparent
+                opacity={opacity}
+              />
+            </mesh>
 
-          {/* Hip joint — small smoothing sphere where torso meets legs */}
-          <mesh position={[0, 0.07, 0]} scale={[1.1, 0.7, 0.95]} castShadow>
-            <sphereGeometry args={[0.10, 16, 16]} />
-            <meshStandardMaterial color={jointColor} roughness={0.55} transparent opacity={opacity} />
-          </mesh>
+            {/* Hip dome — smooths the torso→legs transition */}
+            <mesh position={[0, 0.50, 0]} scale={[1.1, 0.7, 0.95]} castShadow>
+              <sphereGeometry args={[0.13, 20, 20]} />
+              <meshPhysicalMaterial
+                color={torsoColor}
+                roughness={0.6}
+                metalness={0.04}
+                clearcoat={0.14}
+                clearcoatRoughness={0.4}
+                transparent
+                opacity={opacity}
+              />
+            </mesh>
 
-          {/* Legs — longer, narrow, close together */}
-          <mesh position={[-0.07, -0.18, 0]} castShadow>
-            <capsuleGeometry args={[0.052, 0.46, 8, 16]} />
-            <meshStandardMaterial color={limbColor} roughness={0.55} transparent opacity={opacity} />
-          </mesh>
-          <mesh position={[0.07, -0.18, 0]} castShadow>
-            <capsuleGeometry args={[0.052, 0.46, 8, 16]} />
-            <meshStandardMaterial color={limbColor} roughness={0.55} transparent opacity={opacity} />
-          </mesh>
+            {/* Torso — tapered: scaled capsule, slimmer front-to-back */}
+            <mesh position={[0, 0.78, 0]} scale={[1, 1, 0.78]} castShadow>
+              <capsuleGeometry args={[0.18, 0.42, 14, 28]} />
+              <meshPhysicalMaterial
+                color={torsoColor}
+                roughness={0.58}
+                metalness={0.04}
+                clearcoat={0.16}
+                clearcoatRoughness={0.35}
+                emissive={selected ? new THREE.Color(ringColor) : new THREE.Color("#000000")}
+                emissiveIntensity={selected ? 0.18 : 0}
+                transparent
+                opacity={opacity}
+              />
+            </mesh>
 
-          {/* HEAD — Billboard so it always reads as the same flat 2D-style circle from any angle.
-              Matches the 2D node: white inner + group-color border + initial letter. */}
-          <Billboard position={[0, 1.18, 0]} follow={true}>
-            {/* Soft halo for selection / source — hidden when neither */}
-            {(isSource || selected) && (
-              <mesh position={[0, 0, -0.001]}>
-                <circleGeometry args={[0.34, 32]} />
-                <meshBasicMaterial color={ringColor} transparent opacity={isSource ? 0.18 : 0.12} />
+            {/* Shoulder caps — small spheres at the torso→arm joint */}
+            <mesh position={[-0.21, 1.04, 0]} castShadow>
+              <sphereGeometry args={[0.075, 16, 16]} />
+              <meshPhysicalMaterial color={torsoColor} roughness={0.6} clearcoat={0.16} clearcoatRoughness={0.35} transparent opacity={opacity} />
+            </mesh>
+            <mesh position={[0.21, 1.04, 0]} castShadow>
+              <sphereGeometry args={[0.075, 16, 16]} />
+              <meshPhysicalMaterial color={torsoColor} roughness={0.6} clearcoat={0.16} clearcoatRoughness={0.35} transparent opacity={opacity} />
+            </mesh>
+
+            {/* Arms — slim capsules, slight outward angle so they don't clip the torso */}
+            <mesh position={[-0.245, 0.83, 0.015]} rotation={[0, 0, 0.10]} castShadow>
+              <capsuleGeometry args={[0.048, 0.40, 8, 16]} />
+              <meshPhysicalMaterial color={torsoColor} roughness={0.6} clearcoat={0.14} clearcoatRoughness={0.4} transparent opacity={opacity} />
+            </mesh>
+            <mesh position={[0.245, 0.83, 0.015]} rotation={[0, 0, -0.10]} castShadow>
+              <capsuleGeometry args={[0.048, 0.40, 8, 16]} />
+              <meshPhysicalMaterial color={torsoColor} roughness={0.6} clearcoat={0.14} clearcoatRoughness={0.4} transparent opacity={opacity} />
+            </mesh>
+
+            {/* Hands — small skin-tone spheres at the end of each arm */}
+            <mesh position={[-0.295, 0.60, 0.025]} castShadow>
+              <sphereGeometry args={[0.062, 16, 16]} />
+              <meshStandardMaterial color={skin} roughness={0.6} transparent opacity={opacity} />
+            </mesh>
+            <mesh position={[0.295, 0.60, 0.025]} castShadow>
+              <sphereGeometry args={[0.062, 16, 16]} />
+              <meshStandardMaterial color={skin} roughness={0.6} transparent opacity={opacity} />
+            </mesh>
+
+            {/* Neck — short tapered cylinder, skin shadow tone */}
+            <mesh position={[0, 1.115, 0]} castShadow>
+              <cylinderGeometry args={[0.058, 0.07, 0.07, 16]} />
+              <meshStandardMaterial color={skinShadow} roughness={0.65} transparent opacity={opacity} />
+            </mesh>
+
+            {/* HEAD — sphere, skin tone, with subtle clearcoat for the porcelain feel */}
+            <mesh position={[0, 1.27, 0]} castShadow>
+              <sphereGeometry args={[0.16, 32, 32]} />
+              <meshPhysicalMaterial
+                color={skin}
+                roughness={0.62}
+                metalness={0.02}
+                clearcoat={0.18}
+                clearcoatRoughness={0.32}
+                transparent
+                opacity={opacity}
+              />
+            </mesh>
+
+            {/* Hair — only on female variant. Soft dome covering top + back of head. */}
+            {isFemale && (
+              <mesh position={[0, 1.30, -0.025]} scale={[1.13, 0.86, 1.08]} castShadow>
+                <sphereGeometry args={[0.16, 32, 16]} />
+                <meshPhysicalMaterial
+                  color="#3a2937"
+                  roughness={0.7}
+                  metalness={0.02}
+                  clearcoat={0.06}
+                  clearcoatRoughness={0.5}
+                  transparent
+                  opacity={opacity}
+                />
               </mesh>
             )}
-            {/* White inner disc */}
-            <mesh>
-              <circleGeometry args={[0.24, 48]} />
-              <meshBasicMaterial color="#FFFFFF" transparent opacity={opacity} />
-            </mesh>
-            {/* Light group-color tint inside, matching 2D's fillOpacity 0.12 */}
-            <mesh position={[0, 0, 0.001]}>
-              <circleGeometry args={[0.24, 48]} />
-              <meshBasicMaterial color={groupColor} transparent opacity={0.12 * opacity} />
-            </mesh>
-            {/* Group color ring (border) */}
-            <mesh position={[0, 0, 0.002]}>
-              <ringGeometry args={[0.24, 0.24 + ringWidth, 48]} />
-              <meshBasicMaterial color={ringColor} transparent opacity={opacity} />
-            </mesh>
-            {/* Initial letter — group color, matches 2D node */}
-            <Text
-              position={[0, 0, 0.003]}
-              fontSize={0.18}
-              color={groupColor}
-              anchorX="center"
-              anchorY="middle"
-              fontWeight={700}
-            >
-              {initials}
-            </Text>
-          </Billboard>
 
-          {/* Name label above head — light office style (light bg + dark text) */}
-          <Html position={[0, 1.62, 0]} center distanceFactor={7.5} style={{ pointerEvents: "none" }}>
+            {/* Invisible larger hit cylinder for reliable touch / click */}
+            <mesh position={[0, 0.7, 0]} visible={false}>
+              <cylinderGeometry args={[0.34, 0.34, 1.5, 12]} />
+              <meshBasicMaterial transparent opacity={0} />
+            </mesh>
+          </group>
+
+          {/* Name label above head */}
+          <Html position={[0, 1.58, 0]} center distanceFactor={7.5} style={{ pointerEvents: "none" }}>
             <div className={`person3d-label-light ${selected ? "selected" : ""} ${dimmed ? "dimmed" : ""} ${isSource ? "source" : ""}`}>
               {person.display_name}
             </div>
           </Html>
-
-          {/* Invisible larger hit cylinder so touch clicks land on the figure even at distance */}
-          <mesh position={[0, 0.5, 0]} visible={false}>
-            <cylinderGeometry args={[0.36, 0.36, 1.7, 12]} />
-            <meshBasicMaterial transparent opacity={0} />
-          </mesh>
         </group>
       </Float>
     </group>
@@ -239,11 +321,12 @@ function ConnectionBeam({
   selected: boolean
 }) {
   const points = useMemo(() => {
-    // Beams now anchor to the head Billboard height (y=1.18), not the old 0.92 sphere center.
-    const a = new THREE.Vector3(fromPos[0], 1.18, fromPos[2])
-    const b = new THREE.Vector3(toPos[0], 1.18, toPos[2])
+    // Beams anchor at chest center (~0.85), not at the head — keeps the 'light bridge' arc
+    // visually clear of the figure's head and reads as a connection between people, not heads.
+    const a = new THREE.Vector3(fromPos[0], 0.85, fromPos[2])
+    const b = new THREE.Vector3(toPos[0], 0.85, toPos[2])
     const mid = a.clone().lerp(b, 0.5)
-    mid.y += Math.max(0.35, a.distanceTo(b) * 0.16)
+    mid.y += Math.max(0.4, a.distanceTo(b) * 0.18)
     const curve = new THREE.QuadraticBezierCurve3(a, mid, b)
     return curve.getPoints(30)
   }, [fromPos, toPos])
@@ -353,6 +436,7 @@ function Scene({
               person={p}
               selected={isSel}
               isSource={isSrc}
+              hovered={hoveredPersonId === p.id}
               dimmed={!!dimmed}
               onSelect={(e) => { e.stopPropagation(); onPersonClick(p.id) }}
             />
@@ -374,7 +458,7 @@ function Scene({
         maxDistance={16}
         minPolarAngle={Math.PI * 0.18}
         maxPolarAngle={Math.PI * 0.49}
-        target={[0, 0.7, 0]}
+        target={[0, 0.65, 0]}
       />
     </>
   )
