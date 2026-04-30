@@ -112,6 +112,19 @@ select option {
 .person3d-label.source   { border-color: rgba(217, 119, 6, 0.85); transform: scale(1.06); }
 .person3d-label.dimmed   { opacity: 0.45; }
 
+/* Floating emoji speech / thought bubbles (rendered via drei <Html>) */
+.emoji-bubble {
+  font-size: 26px;
+  line-height: 1;
+  opacity: 0;                           /* initial hidden; JS animation reveals it */
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.55));
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  will-change: transform, opacity;
+  transform-origin: center bottom;
+}
+
 /* 3D label, light/office variant — used inside Map3DView so the label reads on the light floor */
 .person3d-label-light {
   white-space: nowrap;

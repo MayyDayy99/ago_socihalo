@@ -7,6 +7,8 @@ import ConnectionEdge from "./ConnectionEdge"
 import FloorAndWalls from "./FloorAndWalls"
 import GroupZones from "./GroupZones"
 import CameraRig from "./CameraRig"
+import SpeechBubbles from "./SpeechBubbles"
+import { useSpeechBubbles } from "../hooks/useSpeechBubbles"
 import type { Pos } from "../hooks/useForceLayout"
 import type { ModeTween } from "../hooks/useModeTween"
 
@@ -32,6 +34,8 @@ export default function UnifiedScene({
   hoveredId, pressedId, pathSet,
   onPersonClick, onPersonPointerDown, onPersonHover,
 }: SceneProps) {
+  const { bubbles, talkingMap } = useSpeechBubbles(people, connections)
+
   const neighborSet = useMemo(() => {
     if (!hoveredId) return null
     const s = new Set<string>([hoveredId])
@@ -103,6 +107,7 @@ export default function UnifiedScene({
             isPathHighlighted={inPath}
             isDimmed={!!dimmed}
             isPressed={pressedId === p.id}
+            talkingToId={talkingMap.get(p.id) ?? null}
             onClick={(e) => { e.stopPropagation(); onPersonClick(p.id, e) }}
             onPointerDown={(e) => { e.stopPropagation(); onPersonPointerDown(p.id, e) }}
             onPointerOver={(e) => { e.stopPropagation(); onPersonHover(p.id) }}
@@ -110,6 +115,8 @@ export default function UnifiedScene({
           />
         )
       })}
+
+      <SpeechBubbles bubbles={bubbles} positionsRef={positionsRef} />
 
       <Environment preset="city" />
       <CameraRig modeTween={modeTween} />
