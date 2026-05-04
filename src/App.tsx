@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback, lazy, Suspense } from "react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { AnimatePresence } from "framer-motion"
-import type { Session } from "@supabase/supabase-js"
-import { supabase } from "./lib/supabase"
+import { firebaseAuth, onAuthStateChanged, type User } from "./lib/firebase"
 import { useAppStore } from "./store/useAppStore"
 import { useIsMobile } from "./hooks/useIsMobile"
 import { useNetworkRealtime } from "./hooks/useNetworkRealtime"
@@ -249,66 +248,16 @@ function LoadingScreen() {
 }
 
 export default function App() {
-  const [session, setSession] = useState<Session | null | undefined>(undefined)
+  // undefined = still resolving, null = signed out, User = signed in
+  const [user, setUser] = useState<User | null | undefined>(undefined)
 
   useEffect(() => {
-    let mounted = true
-
-    function cleanAuthUrl() {
-      const url = new URL(window.location.href)
-      const authParams = ["code", "error", "error_code", "error_description"]
-      const hadAuthParams = authParams.some(param => url.searchParams.has(param))
-      authParams.forEach(param => url.searchParams.delete(param))
-
-      if (hadAuthParams || url.hash.includes("access_token") || url.hash.includes("refresh_token")) {
-        window.history.replaceState(
-          {},
-          document.title,
-          `${url.pathname}${url.search}`
-        )
-      }
-    }
-
-    async function initSession() {
-      const url = new URL(window.location.href)
-      const authError = url.searchParams.get("error_description") ?? url.searchParams.get("error")
-      if (authError) {
-        console.error("Supabase auth callback failed:", authError)
-        cleanAuthUrl()
-        if (mounted) setSession(null)
-        return
-      }
-
-      const code = url.searchParams.get("code")
-      if (code) {
-        const { data, error } = await supabase.auth.exchangeCodeForSession(code)
-        if (error) {
-          console.error("Supabase auth code exchange failed:", error.message)
-          if (mounted) setSession(null)
-        } else if (mounted) {
-          setSession(data.session)
-        }
-        cleanAuthUrl()
-        return
-      }
-
-      const { data: { session } } = await supabase.auth.getSession()
-      cleanAuthUrl()
-      if (mounted) setSession(session)
-    }
-
-    initSession()
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
-      if (mounted) setSession(session)
-    })
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
-    }
+    const unsub = onAuthStateChanged(firebaseAuth, (u) => setUser(u))
+    return () => unsub()
   }, [])
 
-  if (session === undefined) return <LoadingScreen />
-  if (!session)             return <MagicLinkScreen />
+  if (user === undefined) return <LoadingScreen />
+  if (!user)              return <MagicLinkScreen />
 
   return (
     <ErrorBoundary>

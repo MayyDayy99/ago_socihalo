@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { supabase } from "../lib/supabase"
+import { firebaseAuth } from "../lib/firebase"
 import type { Person } from "../store/types"
 
 export function usePeople() {
@@ -20,7 +21,8 @@ export function useCreatePerson() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (person: Omit<Partial<Person>, "id" | "user_id" | "created_at" | "updated_at">) => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const user = firebaseAuth.currentUser
+      if (!user) throw new Error("Nincs bejelentkezve")
       const { data, error } = await supabase
         .from("people")
         .insert({
@@ -33,7 +35,7 @@ export function useCreatePerson() {
           sources: [],
           archived: false,
           ...person,
-          user_id: user!.id,
+          user_id: user.uid,
         })
         .select()
         .single()

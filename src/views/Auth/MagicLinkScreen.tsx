@@ -1,29 +1,29 @@
 import { useState } from "react"
-import { supabase } from "../../lib/supabase"
 import { motion } from "framer-motion"
+import { signInWithGoogle } from "../../lib/firebase"
+import { FirebaseError } from "firebase/app"
 
-function getAuthRedirectTo() {
-  return new URL(import.meta.env.BASE_URL, window.location.origin).toString()
+function getAuthErrorMessage(error: unknown): string {
+  if (error instanceof FirebaseError) {
+    switch (error.code) {
+      case "auth/popup-closed-by-user":
+      case "auth/cancelled-popup-request":
+        return "Bezártad a Google ablakot. Próbáld újra."
+      case "auth/popup-blocked":
+        return "A böngésző blokkolta a felugró ablakot. Engedélyezd ezt az oldalt és próbáld újra."
+      case "auth/network-request-failed":
+        return "Hálózati hiba. Ellenőrizd az internetkapcsolatot és próbáld újra."
+      case "auth/operation-not-allowed":
+        return "A Google bejelentkezés nincs bekapcsolva a Firebase Console-ban. Authentication → Sign-in method → Google → enable."
+      case "auth/unauthorized-domain":
+        return "Ez a domain nincs engedélyezve a Firebase-ben. Authentication → Settings → Authorized domains → vedd fel: " + window.location.host
+      default:
+        return error.message
+    }
+  }
+  return error instanceof Error ? error.message : String(error)
 }
 
-function getAuthErrorMessage(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error)
-  const lower = message.toLowerCase()
-
-  if (lower.includes("provider is not enabled") || lower.includes("provider not enabled")) {
-    return "A Google bejelentkezés még nincs bekapcsolva a Supabase oldalán. Lépj be a Supabase Dashboardra → Authentication → Providers → Google → kapcsold be."
-  }
-  if (lower.includes("redirect")) {
-    return `A bejelentkezési átirányítás nincs engedélyezve Supabase-ben: ${getAuthRedirectTo()}`
-  }
-  if (lower.includes("popup_closed") || lower.includes("popup closed")) {
-    return "Bezártad a Google ablakot. Próbáld újra."
-  }
-  return message
-}
-
-// Google's brand "G" mark — colored. The Google brand guidelines forbid recoloring or
-// distorting it, so this is the official multi-color version.
 function GoogleGIcon({ size = 20 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
@@ -39,18 +39,12 @@ export default function MagicLinkScreen() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function signInWithGoogle() {
+  async function handleSignIn() {
     setError(null)
     setLoading(true)
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: getAuthRedirectTo(),
-        },
-      })
-      if (error) throw error
-      // Success path: the browser is redirected to Google. No state change needed.
+      await signInWithGoogle()
+      // onAuthStateChanged in App.tsx picks up the new user and unmounts this screen.
     } catch (err) {
       setError(getAuthErrorMessage(err))
       setLoading(false)
@@ -65,7 +59,6 @@ export default function MagicLinkScreen() {
         transition={{ duration: 0.25 }}
         className="w-full max-w-sm"
       >
-        {/* Brand */}
         <div className="mb-10 text-center">
           <div className="flex items-center justify-center gap-3 mb-3">
             <svg width="34" height="34" viewBox="0 0 32 32" fill="none">
@@ -84,7 +77,6 @@ export default function MagicLinkScreen() {
           <p className="text-muted text-sm">Személyes kapcsolati háló</p>
         </div>
 
-        {/* Sign-in card */}
         <div className="bg-surface border border-border-strong rounded-xl p-6 shadow-card">
           <h1 className="text-text font-semibold text-base mb-1 text-center">Bejelentkezés</h1>
           <p className="text-muted text-xs text-center mb-5">
@@ -93,14 +85,14 @@ export default function MagicLinkScreen() {
 
           <button
             type="button"
-            onClick={signInWithGoogle}
+            onClick={handleSignIn}
             disabled={loading}
             className="w-full bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed border border-border-strong text-text text-sm font-medium py-3 px-4 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-3"
           >
             {loading ? (
               <>
                 <span className="w-4 h-4 border-2 border-muted border-t-transparent rounded-full animate-spin" />
-                <span>Átirányítás…</span>
+                <span>Bejelentkezés…</span>
               </>
             ) : (
               <>
@@ -117,7 +109,7 @@ export default function MagicLinkScreen() {
           )}
 
           <p className="text-[11px] text-muted text-center mt-5 leading-relaxed">
-            A Google ablak megnyílik egy új lapon. Engedélyezd hogy a Nexus<br />olvashassa az e-mail címedet — semmi mást nem kérünk.
+            Egy Google felugró ablakban kell engedélyezni a bejelentkezést.<br />Csak az e-mail címedet és a neved olvassuk.
           </p>
         </div>
 

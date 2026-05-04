@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { supabase } from "../../lib/supabase"
+import { signOut as firebaseSignOut } from "../../lib/firebase"
 import { Button } from "../../components/ui/Button"
 import { usePeople } from "../../hooks/usePeople"
 import { useConnections } from "../../hooks/useConnections"
@@ -15,7 +15,7 @@ export default function SettingsView() {
 
   async function signOut() {
     setSigningOut(true)
-    await supabase.auth.signOut()
+    await firebaseSignOut()
   }
 
   return (
