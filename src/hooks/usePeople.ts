@@ -63,6 +63,28 @@ export function useUpdatePerson() {
   })
 }
 
+// Position-only writes (auto-pin / drag-end) patch the cache in place instead of
+// invalidating ["people"], so they don't trigger a refetch that tears down and
+// restarts the d3 force simulation on every saved position.
+export function useUpdatePersonPosition() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, pinned_x, pinned_y }: { id: string; pinned_x: number; pinned_y: number }) => {
+      const { error } = await supabase
+        .from("people")
+        .update({ pinned_x, pinned_y })
+        .eq("id", id)
+      if (error) throw error
+      return { id, pinned_x, pinned_y }
+    },
+    onSuccess: ({ id, pinned_x, pinned_y }) => {
+      qc.setQueryData<Person[]>(["people"], (prev) =>
+        prev ? prev.map(p => (p.id === id ? { ...p, pinned_x, pinned_y } : p)) : prev
+      )
+    },
+  })
+}
+
 export function useDeletePerson() {
   const qc = useQueryClient()
   return useMutation({

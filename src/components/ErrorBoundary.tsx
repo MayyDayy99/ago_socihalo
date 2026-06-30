@@ -20,7 +20,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <p className="text-text font-bold mb-2">Váratlan hiba</p>
             <p className="text-muted text-xs mb-6 break-all">{this.state.error.message}</p>
             <button
-              onClick={() => this.setState({ error: null })}
+              onClick={() => window.location.reload()}
               className="text-accent text-sm hover:underline"
             >
               Újratöltés

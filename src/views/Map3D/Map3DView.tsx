@@ -1,9 +1,9 @@
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber"
 import { ContactShadows, Float, Html, Line, OrbitControls } from "@react-three/drei"
 import type { OrbitControls as OrbitControlsImpl } from "three/examples/jsm/controls/OrbitControls.js"
-import { Suspense, useMemo, useRef, useCallback, useState, useEffect } from "react"
+import { Suspense, useMemo, useRef, useCallback, useState, useEffect, memo } from "react"
 import * as THREE from "three"
-import { usePeople, useUpdatePerson } from "../../hooks/usePeople"
+import { usePeople, useUpdatePersonPosition } from "../../hooks/usePeople"
 import { useConnections, useCreateConnection } from "../../hooks/useConnections"
 import { useAppStore } from "../../store/useAppStore"
 import { GROUPS } from "../../lib/constants"
@@ -139,7 +139,9 @@ function easeInOut01(v: number): number {
 
 function ageInDays(value?: string | null): number {
   if (!value) return Number.POSITIVE_INFINITY
-  const time = new Date(value).getTime()
+  // Date.parse returns a number directly — no Date object allocation. This matters because
+  // ageInDays is called many times per frame from useFrame (per avatar and per connection).
+  const time = Date.parse(value)
   if (!Number.isFinite(time)) return Number.POSITIVE_INFINITY
   return Math.max(0, (Date.now() - time) / DAY_MS)
 }
@@ -270,7 +272,7 @@ function computeLivingTarget(
 //
 // Materials: MeshPhysicalMaterial with subtle clearcoat for matte clay/porcelain feel.
 
-function PersonAvatar({
+function PersonAvatarImpl({
   person, selected, dimmed, isSource, hovered, pressed, personConnections,
   basePositionMap, dragOverridesRef, liveMotionRef, sceneEventsRef, onSelect, onPointerDown,
 }: {
@@ -634,11 +636,26 @@ function PersonAvatar({
   )
 }
 
+// Memoized so a hover/select state change in Scene only re-renders the avatars whose flags
+// actually changed, not all of them. The onSelect/onPointerDown closures are intentionally
+// excluded from the comparison: they call the stable (getState-based) top-level handlers,
+// so keeping an older closure is behaviourally identical.
+const PersonAvatar = memo(PersonAvatarImpl, (a, b) =>
+  a.person === b.person &&
+  a.selected === b.selected &&
+  a.dimmed === b.dimmed &&
+  a.isSource === b.isSource &&
+  a.hovered === b.hovered &&
+  a.pressed === b.pressed &&
+  a.personConnections === b.personConnections &&
+  a.basePositionMap === b.basePositionMap
+)
+
 // ── 3D connection beam ─────────────────────────────────────
 const BEAM_POINTS = 28
 const BEAM_HEIGHT = 0.85   // chest-center anchor
 
-function ConnectionBeam({
+function ConnectionBeamImpl({
   connection, fromPos, toPos, color, dimmed, selected, dragOverridesRef, liveMotionRef, sceneEventsRef,
 }: {
   connection: Connection
@@ -754,6 +771,17 @@ function ConnectionBeam({
   )
 }
 
+// Memoized — ConnectionBeam takes only data/ref props (no inline callbacks), so a hover/
+// select re-render of Scene skips beams whose props are unchanged.
+const ConnectionBeam = memo(ConnectionBeamImpl, (a, b) =>
+  a.connection === b.connection &&
+  a.fromPos === b.fromPos &&
+  a.toPos === b.toPos &&
+  a.color === b.color &&
+  a.dimmed === b.dimmed &&
+  a.selected === b.selected
+)
+
 // (Group zone discs were a 3D-only visual; removed for parity with the 2D view.
 //  The GROUP_3D centers above are still used as the seed positions for `placeInGroup`.)
 
@@ -811,6 +839,18 @@ function Scene({
     return s
   }, [hoveredPersonId, connections])
 
+  // Neighbours of the selected person, precomputed once — so the per-person dimming check
+  // below is an O(1) Set lookup instead of an O(connections) scan inside the people.map.
+  const selectedNeighborSet = useMemo(() => {
+    if (!selectedPersonId) return null
+    const s = new Set<string>([selectedPersonId])
+    connections.forEach(c => {
+      if (c.from_id === selectedPersonId) s.add(c.to_id)
+      if (c.to_id === selectedPersonId) s.add(c.from_id)
+    })
+    return s
+  }, [selectedPersonId, connections])
+
   return (
     <>
       <color attach="background" args={["#F5F5F5"]} />
@@ -859,10 +899,7 @@ function Scene({
         const dimmed =
           (hoveredPersonId !== null && neighborSet && !neighborSet.has(p.id) && !isSrc) ||
           (selectedPersonId !== null && !isSel && !isSrc &&
-            !connections.some(c =>
-              (c.from_id === selectedPersonId && c.to_id === p.id) ||
-              (c.to_id === selectedPersonId && c.from_id === p.id)
-            ))
+            selectedNeighborSet !== null && !selectedNeighborSet.has(p.id))
         return (
           <group
             key={p.id}
@@ -914,7 +951,13 @@ function Scene({
 export default function Map3DView() {
   const { data: people = [], isLoading } = usePeople()
   const { data: connections = [], isLoading: connectionsLoading } = useConnections()
-  const updatePerson = useUpdatePerson()
+  const persistPosition = useUpdatePersonPosition()
+  // Kept in a ref so the drag handler can stay referentially stable (and not rebuild on
+  // every render), which keeps the memoized PersonAvatar from re-rendering needlessly.
+  const persistPositionRef = useRef(persistPosition)
+  persistPositionRef.current = persistPosition
+  // Cleanup fn for an in-progress drag gesture, so it can be torn down on unmount.
+  const gestureCleanupRef = useRef<(() => void) | null>(null)
   const createConn   = useCreateConnection()
   const {
     setSelectedPersonId,
@@ -993,6 +1036,9 @@ export default function Map3DView() {
   const onPersonClick = useCallback((personId: string) => {
     // Suppress click immediately following a real drag (click fires on pointerup)
     if (dragMovedRef.current) return
+    // Read connect state live from the store so this handler stays referentially stable
+    // (required for the memoized PersonAvatar to skip re-renders correctly).
+    const { connectMode, connectFromId } = useAppStore.getState()
     if (connectMode) {
       if (!connectFromId) {
         setConnectFromId(personId)
@@ -1005,7 +1051,7 @@ export default function Map3DView() {
     } else {
       setSelectedPersonId(personId)
     }
-  }, [connectMode, connectFromId, setConnectFromId, setConnectMode, setSelectedPersonId])
+  }, [setConnectFromId, setConnectMode, setSelectedPersonId])
 
   // Drag: raycast against the y=0 plane to convert pointer position → world coords.
   // Long-press (400ms) gating on touch so a tap stays a tap.
@@ -1016,7 +1062,7 @@ export default function Map3DView() {
       setConnectMode(true)
       return
     }
-    if (connectMode) return
+    if (useAppStore.getState().connectMode) return
 
     const isTouch = native.pointerType === "touch"
     const longPressMs = isTouch ? LONG_PRESS_MS : 0
@@ -1090,7 +1136,7 @@ export default function Map3DView() {
           // World units → pixel units (the scale 2D's d3-force uses)
           const pinned_x = pos[0] / WORLD_SCALE
           const pinned_y = pos[2] / WORLD_SCALE
-          updatePerson.mutate({ id: personId, pinned_x, pinned_y })
+          persistPositionRef.current.mutate({ id: personId, pinned_x, pinned_y })
         }
         dragMovedRef.current = true
         // Clear the click-suppression flag a tick later so onClick fires after this returns
@@ -1110,12 +1156,18 @@ export default function Map3DView() {
       window.removeEventListener("pointermove", onMove)
       window.removeEventListener("pointerup", onUp)
       window.removeEventListener("pointercancel", onUp)
+      gestureCleanupRef.current = null
     }
 
+    // Expose the active cleanup so an unmount mid-drag can tear the listeners down.
+    gestureCleanupRef.current = cleanup
     window.addEventListener("pointermove", onMove)
     window.addEventListener("pointerup", onUp)
     window.addEventListener("pointercancel", onUp)
-  }, [connectMode, setConnectFromId, setConnectMode, updatePerson])
+  }, [setConnectFromId, setConnectMode])
+
+  // If the 3D view unmounts mid-drag, tear down any window listeners left attached.
+  useEffect(() => () => { gestureCleanupRef.current?.() }, [])
 
   const showLoading = isLoading
   const showEmpty   = !isLoading && people.length === 0

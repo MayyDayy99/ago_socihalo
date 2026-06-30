@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { Button } from "./ui/Button"
 import { Input } from "./ui/Input"
@@ -23,6 +23,14 @@ export default function CreatePersonModal() {
   const [role, setRole] = useState("none")
   const [strength, setStrength] = useState("3")
   const [error, setError] = useState<string | null>(null)
+
+  // The modal is always mounted (returns null when closed), so clear leftover form state
+  // whenever it closes — otherwise a cancelled entry reappears on the next open.
+  useEffect(() => {
+    if (!createPersonOpen) {
+      setName(""); setGroup(""); setRole("none"); setStrength("3"); setError(null)
+    }
+  }, [createPersonOpen])
 
   if (!createPersonOpen) return null
 

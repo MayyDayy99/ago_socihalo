@@ -6,6 +6,7 @@ import { usePeople } from "../../hooks/usePeople"
 import { useConnections } from "../../hooks/useConnections"
 import { shortestPath } from "../../lib/metrics"
 import { GROUPS } from "../../lib/constants"
+import { toast } from "../../components/ui/Toast"
 
 interface Action {
   id: string
@@ -63,6 +64,11 @@ export default function CommandPalette() {
             icon: <Route size={14} className="text-accent" />,
             run: () => {
               const path = shortestPath(selectedPersonId, p.id, connections)
+              if (!path) {
+                toast.error("Nincs útvonal e két személy között")
+                close()
+                return
+              }
               setPathHighlight(path)
               setActiveView("map")
               close()

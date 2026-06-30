@@ -5,6 +5,20 @@ export interface ParsedContact {
   sources: Array<{ type: "phone"; imported_at: string }>
 }
 
+// Returns the property name (e.g. "TEL") for a vCard line, stripping any leading
+// "group." prefix (Apple/iCloud emit "item1.TEL;type=CELL:+1..."). null if not a property line.
+function propName(line: string): string | null {
+  const head = line.split(/[;:]/, 1)[0]          // text before first ';' or ':'
+  if (!head) return null
+  const name = head.includes(".") ? head.slice(head.indexOf(".") + 1) : head
+  return name.toUpperCase()
+}
+
+function valueOf(line: string): string {
+  const idx = line.indexOf(":")
+  return idx === -1 ? "" : line.slice(idx + 1).trim()
+}
+
 export function parseVCard(vcf: string): ParsedContact {
   const unfolded = vcf.replace(/\r\n[ \t]/g, "").replace(/\r\n/g, "\n")
   const lines = unfolded.split("\n")
@@ -15,11 +29,17 @@ export function parseVCard(vcf: string): ParsedContact {
     sources: [{ type: "phone", imported_at: new Date().toISOString() }],
   }
   for (const line of lines) {
-    const upper = line.toUpperCase()
-    if (upper.startsWith("FN:"))    contact.display_name = decodeVCardValue(line.slice(3))
-    if (upper.startsWith("FN;"))    contact.display_name = decodeVCardValue(line.split(":").slice(1).join(":"))
-    if (upper.startsWith("TEL"))    contact.phone_numbers.push(line.split(":").slice(1).join(":").trim())
-    if (upper.startsWith("EMAIL"))  contact.emails.push(line.split(":").slice(1).join(":").trim())
+    const prop = propName(line)
+    if (!prop) continue
+    if (prop === "FN") {
+      contact.display_name = decodeVCardValue(valueOf(line))
+    } else if (prop === "TEL") {
+      const v = valueOf(line)
+      if (v) contact.phone_numbers.push(v)
+    } else if (prop === "EMAIL") {
+      const v = valueOf(line)
+      if (v) contact.emails.push(v)
+    }
   }
   return contact
 }

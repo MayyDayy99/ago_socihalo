@@ -1,7 +1,12 @@
 import type { Person } from "../store/types"
 
 function escape(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/,/g, "\\,").replace(/;/g, "\\;").replace(/\n/g, "\\n")
+  // Strip raw CR/LF first (prevents line injection), then escape vCard special chars.
+  return s
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\\/g, "\\\\")
+    .replace(/,/g, "\\,")
+    .replace(/;/g, "\\;")
 }
 
 export function personToVCard(person: Person): string {
@@ -9,11 +14,11 @@ export function personToVCard(person: Person): string {
     "BEGIN:VCARD",
     "VERSION:3.0",
     `FN:${escape(person.display_name)}`,
-    ...person.emails.map(e => `EMAIL;TYPE=INTERNET:${e}`),
-    ...person.phone_numbers.map(p => `TEL;TYPE=CELL:${p}`),
+    ...person.emails.map(e => `EMAIL;TYPE=INTERNET:${escape(e)}`),
+    ...person.phone_numbers.map(p => `TEL;TYPE=CELL:${escape(p)}`),
     person.notes ? `NOTE:${escape(person.notes)}` : null,
     person.met_at ? `ORG:${escape(person.met_at)}` : null,
-    `CATEGORIES:${person.group_key ?? "other"}`,
+    `CATEGORIES:${escape(person.group_key ?? "other")}`,
     `X-NEXUS-ROLE:${person.role_key}`,
     `X-NEXUS-STRENGTH:${person.strength}`,
     "END:VCARD",

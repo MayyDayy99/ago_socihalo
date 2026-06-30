@@ -19,22 +19,23 @@ if (!url || !anonKey) {
 //   - RLS policies must use (auth.jwt() ->> 'sub') = user_id (text-typed)
 //
 // We disable Supabase's own session machinery — we have no Supabase users.
+//
+// `accessToken` is the supported hook for third-party auth: supabase-js calls it
+// whenever it needs a bearer token and attaches the result to BOTH PostgREST (REST)
+// requests AND the Realtime websocket (via realtime.setAuth), refreshing as needed.
+// A previous global.fetch wrapper only covered REST, leaving Realtime unauthenticated.
 export const supabase = createClient(url, anonKey, {
   auth: {
     persistSession: false,
     autoRefreshToken: false,
     detectSessionInUrl: false,
   },
-  global: {
-    fetch: async (input, init) => {
-      const headers = new Headers(init?.headers)
-      try {
-        const token = await firebaseAuth.currentUser?.getIdToken()
-        if (token) headers.set("Authorization", `Bearer ${token}`)
-      } catch {
-        // No-op: if the token fetch fails we send an unauthenticated request and Supabase RLS rejects.
-      }
-      return fetch(input, { ...init, headers })
-    },
+  accessToken: async () => {
+    try {
+      return (await firebaseAuth.currentUser?.getIdToken()) ?? null
+    } catch {
+      // If the token fetch fails we send an unauthenticated request and Supabase RLS rejects.
+      return null
+    }
   },
 })

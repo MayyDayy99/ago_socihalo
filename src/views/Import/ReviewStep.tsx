@@ -26,13 +26,39 @@ export default function ReviewStep({ candidates, onDone }: ReviewStepProps) {
 
   const existingNames = useMemo(() => new Set(existing.map(p => p.display_name.toLowerCase())), [existing])
 
+  // Collapse candidates by normalised name *within the batch*, merging their emails/phones,
+  // so two entries for the same person don't import as two partial-data people. Also guards
+  // against missing/blank names (which would otherwise crash on .toLowerCase()).
+  const merged = useMemo(() => {
+    const uniq = (a: string[]) => [...new Set(a.filter(Boolean))]
+    const byName = new Map<string, Candidate>()
+    for (const c of candidates) {
+      const name = (c.display_name ?? "").trim()
+      if (!name) continue
+      const key = name.toLowerCase()
+      const prev = byName.get(key)
+      if (prev) {
+        prev.phone_numbers = uniq([...(prev.phone_numbers ?? []), ...(c.phone_numbers ?? [])])
+        prev.emails = uniq([...(prev.emails ?? []), ...(c.emails ?? [])])
+      } else {
+        byName.set(key, {
+          ...c,
+          display_name: name,
+          phone_numbers: uniq(c.phone_numbers ?? []),
+          emails: uniq(c.emails ?? []),
+        })
+      }
+    }
+    return [...byName.values()]
+  }, [candidates])
+
   const rows = useMemo(() =>
-    candidates.map((c, i) => ({
+    merged.map((c, i) => ({
       ...c,
       i,
       duplicate: existingNames.has(c.display_name.toLowerCase()),
     })),
-    [candidates, existingNames]
+    [merged, existingNames]
   )
 
   useEffect(() => {

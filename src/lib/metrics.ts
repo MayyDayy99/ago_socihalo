@@ -45,10 +45,12 @@ export function computeMetrics(people: Person[], connections: Connection[]): Net
 export function shortestPath(fromId: string, toId: string, connections: Connection[]): string[] | null {
   const adj = buildAdjacency(connections)
   const visited = new Set<string>([fromId])
+  // Use a head pointer instead of Array.shift() (which is O(n)) so BFS stays O(V+E).
   const queue: Array<{ id: string; path: string[] }> = [{ id: fromId, path: [fromId] }]
+  let head = 0
 
-  while (queue.length) {
-    const { id, path } = queue.shift()!
+  while (head < queue.length) {
+    const { id, path } = queue[head++]
     if (id === toId) return path
     for (const next of (adj.get(id) ?? [])) {
       if (!visited.has(next)) {
@@ -71,10 +73,12 @@ function brandesBetweenness(people: Person[], connections: Connection[]): Map<st
     sigma.set(s.id, 1)
     const dist = new Map<string, number>(people.map(p => [p.id, -1]))
     dist.set(s.id, 0)
+    // Head pointer instead of Array.shift() → each BFS is O(V+E), whole pass O(VE).
     const queue: string[] = [s.id]
+    let head = 0
 
-    while (queue.length) {
-      const v = queue.shift()!
+    while (head < queue.length) {
+      const v = queue[head++]
       stack.push(v)
       for (const w of (adj.get(v) ?? [])) {
         if (dist.get(w) === -1) {
@@ -111,13 +115,22 @@ function brandesBetweenness(people: Person[], connections: Connection[]): Map<st
   return betweenness
 }
 
+// Adjacency for pathfinding/betweenness. Edges are de-duplicated (a Set per node) so
+// parallel edges can't inflate shortest-path counts, and the reverse direction is only
+// added for undirected connections — a directed A→B edge is not silently traversed B→A.
 export function buildAdjacency(connections: Connection[]): Map<string, string[]> {
-  const adj = new Map<string, string[]>()
-  for (const c of connections) {
-    if (!adj.has(c.from_id)) adj.set(c.from_id, [])
-    if (!adj.has(c.to_id))   adj.set(c.to_id, [])
-    adj.get(c.from_id)!.push(c.to_id)
-    adj.get(c.to_id)!.push(c.from_id)
+  const sets = new Map<string, Set<string>>()
+  const ensure = (id: string) => {
+    let s = sets.get(id)
+    if (!s) { s = new Set(); sets.set(id, s) }
+    return s
   }
+  for (const c of connections) {
+    ensure(c.from_id).add(c.to_id)
+    if (c.directed) ensure(c.to_id)          // keep the node, no reverse edge
+    else ensure(c.to_id).add(c.from_id)
+  }
+  const adj = new Map<string, string[]>()
+  for (const [id, s] of sets) adj.set(id, [...s])
   return adj
 }

@@ -36,7 +36,7 @@ export default function SettingsView() {
 
         <section className="bg-surface border border-border rounded-xl p-5 shadow-card space-y-4">
           <h2 className="text-sm font-semibold text-text">Fiók</h2>
-          <p className="text-xs text-muted">Bejelentkezés magic link-kel. Jelszó nincs.</p>
+          <p className="text-xs text-muted">Bejelentkezés Google-fiókkal (Firebase Auth). Jelszó nincs.</p>
           <Button variant="danger" onClick={signOut} disabled={signingOut}>
             <LogOut size={13} /> {signingOut ? "Kijelentkezés…" : "Kijelentkezés"}
           </Button>
@@ -64,7 +64,7 @@ export default function SettingsView() {
           <div className="text-xs text-muted space-y-1">
             <p>React 18 · TypeScript · Vite 5</p>
             <p>Tailwind CSS 3 · Framer Motion · D3 v7</p>
-            <p>Supabase (Postgres + Auth + Edge Functions)</p>
+            <p>Firebase Auth (Google) · Supabase (Postgres + Edge Functions)</p>
             <p>GitHub Pages · pnpm</p>
           </div>
         </section>
@@ -78,12 +78,12 @@ export default function SettingsView() {
         </section>
 
         <section className="bg-surface-2 border border-border rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-amber-700 mb-2">Supabase konfiguráció</h2>
+          <h2 className="text-sm font-semibold text-amber-700 mb-2">Konfiguráció</h2>
           <ol className="text-xs text-muted space-y-1 list-decimal list-inside">
-            <li>Migráció: <code className="text-accent">supabase/migrations/0001_initial.sql</code></li>
-            <li>Email Magic Link bekapcsolva ✓</li>
-            <li>Site URL: <code className="text-accent">https://MayyDayy99.github.io/ago_socihalo/</code></li>
-            <li>Több user támogatása: <em>Authentication → Providers → Email → "Allow new users to sign up"</em> kapcsolja</li>
+            <li>Supabase migrációk: <code className="text-accent">supabase/migrations/</code> (a 0004 állítja át a sémát Firebase-authra)</li>
+            <li>Firebase: Authentication → Sign-in method → Google bekapcsolva ✓</li>
+            <li>Supabase: Authentication → Third Party Auth → Firebase hozzáadva (project ID)</li>
+            <li>Engedélyezett domain: <code className="text-accent">MayyDayy99.github.io</code> (Firebase → Authorized domains)</li>
           </ol>
         </section>
       </div>

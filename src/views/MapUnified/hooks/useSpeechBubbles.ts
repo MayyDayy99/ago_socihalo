@@ -49,6 +49,15 @@ export function useSpeechBubbles(people: Person[], connections: Connection[]) {
   peopleRef.current = people
   connsRef.current  = connections
 
+  // Track every pending timeout so the unmount cleanup can clear them all — otherwise
+  // queued bubble/conversation callbacks call setState on an unmounted component.
+  const timeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
+  function later(fn: () => void, ms: number) {
+    const id = setTimeout(() => { timeoutsRef.current.delete(id); fn() }, ms)
+    timeoutsRef.current.add(id)
+    return id
+  }
+
   // ── State helpers ──────────────────────────────────────────────────────────
   function commitTalking(id: string, toId: string | null) {
     talkingIntRef.current.set(id, toId)
@@ -73,7 +82,7 @@ export function useSpeechBubbles(people: Person[], connections: Connection[]) {
     setBubbles(prev => [...prev, bubble])
     commitTalking(personId, toPersonId)
 
-    setTimeout(() => {
+    later(() => {
       setBubbles(prev => prev.filter(b => b.id !== id))
       busyRef.current.delete(personId)
       commitClearTalking(personId)
@@ -89,7 +98,7 @@ export function useSpeechBubbles(people: Person[], connections: Connection[]) {
       const speaker  = i % 2 === 0 ? fromId : toId
       const listener = i % 2 === 0 ? toId   : fromId
       const capturedDelay = delay
-      setTimeout(() => spawnBubble(speaker, listener, rand(pool)), capturedDelay)
+      later(() => spawnBubble(speaker, listener, rand(pool)), capturedDelay)
       delay += 950 + Math.random() * 750
     }
   }
@@ -117,7 +126,7 @@ export function useSpeechBubbles(people: Person[], connections: Connection[]) {
     // Secondary concurrent event (38% chance) – adds liveliness
     if (Math.random() < 0.38 && cc.length > 1) {
       const delay = 280 + Math.random() * 520
-      setTimeout(() => {
+      later(() => {
         const conn = cc[Math.floor(Math.random() * cc.length)]
         if (!busyRef.current.has(conn.from_id) && !busyRef.current.has(conn.to_id)) {
           spawnBubble(conn.from_id, conn.to_id, rand(rand(CONV_POOLS)))
@@ -130,7 +139,7 @@ export function useSpeechBubbles(people: Person[], connections: Connection[]) {
       const count = 2 + Math.floor(Math.random() * 2)
       const pool  = rand(CONV_POOLS)
       for (let i = 0; i < count; i++) {
-        setTimeout(() => {
+        later(() => {
           const p = pp[Math.floor(Math.random() * pp.length)]
           if (!busyRef.current.has(p.id)) spawnBubble(p.id, null, rand(pool))
         }, i * (200 + Math.random() * 300))
@@ -147,7 +156,13 @@ export function useSpeechBubbles(people: Person[], connections: Connection[]) {
     }
     // Short initial delay so the scene has time to populate
     const init = setTimeout(() => { fireRef.current(); schedule() }, 2200)
-    return () => { clearTimeout(timer); clearTimeout(init) }
+    return () => {
+      clearTimeout(timer)
+      clearTimeout(init)
+      // Clear every queued bubble/conversation/reaction timeout too.
+      timeoutsRef.current.forEach(id => clearTimeout(id))
+      timeoutsRef.current.clear()
+    }
   }, []) // intentionally once – uses refs for current people/connections
 
   return { bubbles, talkingMap }

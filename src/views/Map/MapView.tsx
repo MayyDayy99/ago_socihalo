@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react"
 import * as d3 from "d3"
-import { usePeople, useUpdatePerson } from "../../hooks/usePeople"
+import { usePeople, useUpdatePersonPosition } from "../../hooks/usePeople"
 import { useConnections, useCreateConnection } from "../../hooks/useConnections"
 import { useAppStore } from "../../store/useAppStore"
 import { useMetrics } from "../../hooks/useMetrics"
@@ -24,7 +24,7 @@ const MIN_R = 18, MAX_R = 34
 export default function MapView() {
   const { data: people = [], isLoading: peopleLoading } = usePeople()
   const { data: connections = [] } = useConnections()
-  const updatePerson  = useUpdatePerson()
+  const persistPosition = useUpdatePersonPosition()
   const createConn    = useCreateConnection()
   const metrics       = useMetrics(people, connections)
 
@@ -48,6 +48,8 @@ export default function MapView() {
   const [isPanning, setIsPanning] = useState(false)
   const [pressedId, setPressedId] = useState<string | null>(null)
   const dragRef = useRef<{ id: string; sx: number; sy: number; moved: boolean } | null>(null)
+  // Set right after a real drag so the synthesized click doesn't open the detail panel.
+  const justDraggedRef = useRef(false)
   const tickRafRef = useRef<number | null>(null)
   const transformRafRef = useRef<number | null>(null)
   // Tracks which person ids have been auto-pinned this session (so we don't keep firing mutations).
@@ -92,6 +94,15 @@ export default function MapView() {
     [connections, filteredIds]
   )
 
+  // Structural signature of the graph: only the SET of node/edge ids matters to the
+  // simulation. Keying the sim effect on this (not the array identity) means a
+  // position-only write — which changes pinned_x/y but no ids — won't rebuild/restart
+  // the simulation and make the layout visibly re-jiggle.
+  const simKey = useMemo(
+    () => filteredPeople.map(p => p.id).join(",") + "|" + filteredConnections.map(c => c.id).join(","),
+    [filteredPeople, filteredConnections]
+  )
+
   // D3 simulation — RAF-throttled state ticks (no flicker)
   useEffect(() => {
     const nodeMap = new Map<string, SimNode>()
@@ -133,7 +144,7 @@ export default function MapView() {
             if (p.pinned_x !== null && p.pinned_y !== null) { autoPinnedRef.current.add(node.id); continue }
             if (node.x === undefined || node.y === undefined) continue
             autoPinnedRef.current.add(node.id)
-            updatePerson.mutate({ id: node.id, pinned_x: node.x, pinned_y: node.y })
+            persistPosition.mutate({ id: node.id, pinned_x: node.x, pinned_y: node.y })
           }
         }
         if (tickRafRef.current !== null) return
@@ -149,7 +160,10 @@ export default function MapView() {
       if (tickRafRef.current !== null) cancelAnimationFrame(tickRafRef.current)
       tickRafRef.current = null
     }
-  }, [filteredPeople, filteredConnections])
+    // Rebuild only when the set of nodes/edges changes (simKey), not on every
+    // position-only data update. Body intentionally reads the latest filtered arrays.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simKey])
 
   // D3 zoom — direct DOM updates only (React never touches the <g> transform).
   // This eliminates flicker AND fixes wheel-zoom-on-cursor (which only works
@@ -226,6 +240,8 @@ export default function MapView() {
 
   // ── Click + drag handlers ──────────────────────────────
   const handleNodeClick = useCallback((person: Person) => {
+    // A drag just finished → the browser's synthesized click should not select/open the node.
+    if (justDraggedRef.current) return
     if (connectMode) {
       if (!connectFromId) {
         setConnectFromId(person.id)
@@ -259,6 +275,7 @@ export default function MapView() {
     let dragActive = !isTouch
     let startFx = 0, startFy = 0
     let pinnedThisGesture = false
+    const wasDbPinned = person.pinned_x !== null && person.pinned_y !== null
 
     dragRef.current = { id: person.id, sx: e.clientX, sy: e.clientY, moved: false }
 
@@ -317,10 +334,20 @@ export default function MapView() {
       cancelLongPress()
       const drag = dragRef.current
       if (drag && drag.moved && dragActive && pinnedThisGesture) {
+        // Real drag → suppress the synthesized click that follows pointerup…
+        justDraggedRef.current = true
+        setTimeout(() => { justDraggedRef.current = false }, 0)
+        // …and persist only when BOTH coordinates are real numbers (else the node
+        // would be treated as un-pinned on reload and drift back).
         const n = nodesRef.current.find(x => x.id === drag.id)
-        if (n && n.fx !== undefined && n.fx !== null) {
-          updatePerson.mutate({ id: drag.id, pinned_x: n.fx, pinned_y: n.fy ?? null })
+        if (n && n.fx != null && n.fy != null) {
+          persistPosition.mutate({ id: drag.id, pinned_x: n.fx, pinned_y: n.fy })
         }
+      } else if (dragActive && pinnedThisGesture && drag && !drag.moved && !wasDbPinned) {
+        // Touch long-press engaged a pin but the user lifted without moving and the node
+        // wasn't pinned in the DB → release the temporary pin so it rejoins the layout.
+        const n = nodesRef.current.find(x => x.id === drag.id)
+        if (n) { n.fx = null; n.fy = null; simRef.current?.alpha(0.1).restart() }
       }
       cleanup()
     }
@@ -336,7 +363,7 @@ export default function MapView() {
     window.addEventListener("pointermove", onMove)
     window.addEventListener("pointerup", onUp)
     window.addEventListener("pointercancel", onUp)
-  }, [connectMode, setConnectFromId, setConnectMode, updatePerson])
+  }, [connectMode, setConnectFromId, setConnectMode, persistPosition])
 
   // ── ESC cancels connect mode ──────────────────────────
   useEffect(() => {

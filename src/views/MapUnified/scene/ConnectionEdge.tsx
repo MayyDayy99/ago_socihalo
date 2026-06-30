@@ -21,11 +21,16 @@ const POINTS = 28
 const HEAD_HEIGHT = 0.92  // matches PersonAvatar head Y position
 
 function EdgeImpl({ connection, positionsRef, modeTween, isDimmed, isPathHighlighted, isAdjacentToSelected }: EdgeProps) {
-  const lineRef = useRef<{ geometry: THREE.BufferGeometry; material: THREE.LineBasicMaterial } | null>(null)
+  // drei's <Line> wraps Line2 (LineGeometry). Its positions must be set via
+  // setPositions(Float32Array) — BufferGeometry.setFromPoints is a no-op here, which is why
+  // the edges previously never tracked node movement. Use a flat buffer like Map3DView does.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const lineRef = useRef<any>(null)
   // Pre-allocated points array we mutate each frame
   const pointsRef = useRef<THREE.Vector3[]>(
     Array.from({ length: POINTS }, () => new THREE.Vector3())
   )
+  const posBuf = useRef<Float32Array>(new Float32Array(POINTS * 3))
   const tmpA = useRef(new THREE.Vector3())
   const tmpB = useRef(new THREE.Vector3())
   const tmpMid = useRef(new THREE.Vector3())
@@ -59,18 +64,21 @@ function EdgeImpl({ connection, positionsRef, modeTween, isDimmed, isPathHighlig
     curveRef.current.v1 = tmpMid.current
     curveRef.current.v2 = tmpB.current
 
-    // Sample the curve into our pre-allocated point buffer
+    // Sample the curve into our pre-allocated point + flat buffers
     const pts = pointsRef.current
+    const buf = posBuf.current
     for (let i = 0; i < POINTS; i++) {
       const t = i / (POINTS - 1)
-      curveRef.current.getPoint(t, pts[i])
+      const p = curveRef.current.getPoint(t, pts[i])
+      buf[i * 3] = p.x; buf[i * 3 + 1] = p.y; buf[i * 3 + 2] = p.z
     }
 
-    // Push into the line geometry
+    // Push into the LineGeometry via setPositions (the only method that actually updates it)
     const line = lineRef.current
     if (line && line.geometry) {
-      line.geometry.setFromPoints(pts)
-      line.geometry.computeBoundingSphere()
+      line.geometry.setPositions(buf)
+      line.computeLineDistances?.()
+      line.geometry.computeBoundingSphere?.()
     }
   })
 

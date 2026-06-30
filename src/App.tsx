@@ -59,12 +59,14 @@ function NexusLogo({ size = 18 }: { size?: number }) {
 function AppShell() {
   useNetworkRealtime()
 
-  const {
-    activeView, setActiveView,
-    mapMode,
-    selectedPersonId,
-    commandPaletteOpen, setCommandPaletteOpen,
-  } = useAppStore()
+  // Subscribe to individual slices so the shell only re-renders when these change,
+  // not on every unrelated store update (filters, connect mode, path highlight…).
+  const activeView = useAppStore(s => s.activeView)
+  const setActiveView = useAppStore(s => s.setActiveView)
+  const mapMode = useAppStore(s => s.mapMode)
+  const selectedPersonId = useAppStore(s => s.selectedPersonId)
+  const commandPaletteOpen = useAppStore(s => s.commandPaletteOpen)
+  const setCommandPaletteOpen = useAppStore(s => s.setCommandPaletteOpen)
 
   const isMobile = useIsMobile()
   const [shortcutsOpen, setShortcutsOpen] = useState(false)

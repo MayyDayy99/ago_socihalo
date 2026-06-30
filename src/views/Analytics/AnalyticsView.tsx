@@ -21,9 +21,15 @@ export default function AnalyticsView() {
   const { data: people = [], isLoading } = usePeople()
   const { data: connections = [] } = useConnections()
   const { setSelectedPersonId, setActiveView } = useAppStore()
-  const metrics = useMetrics(people, connections)
 
   const activePeople = useMemo(() => people.filter(p => !p.archived), [people])
+  // Metrics must be computed over the SAME node set the UI reports on (active only),
+  // otherwise density/averages mix an active denominator with archived-inclusive counts.
+  const activeConnections = useMemo(() => {
+    const activeIds = new Set(activePeople.map(p => p.id))
+    return connections.filter(c => activeIds.has(c.from_id) && activeIds.has(c.to_id))
+  }, [activePeople, connections])
+  const metrics = useMetrics(activePeople, activeConnections)
 
   const groupDist = useMemo(() => {
     const total = activePeople.length || 1
@@ -80,11 +86,11 @@ export default function AnalyticsView() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
         <StatCard label="Személyek" value={activePeople.length} sub={`${people.filter(p => p.archived).length} archivált`} />
-        <StatCard label="Kapcsolatok" value={connections.length} />
+        <StatCard label="Kapcsolatok" value={activeConnections.length} />
         <StatCard label="Sűrűség" value={(metrics.density * 100).toFixed(2) + "%"} sub="0% = izolált, 100% = teljesen összekapcsolt" />
         <StatCard label="Átl. kapcsolat" value={
           activePeople.length > 0
-            ? (connections.length * 2 / activePeople.length).toFixed(1)
+            ? (activeConnections.length * 2 / activePeople.length).toFixed(1)
             : "0"
         } sub="személyenként" />
       </div>

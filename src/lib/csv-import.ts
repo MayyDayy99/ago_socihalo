@@ -7,42 +7,73 @@ export interface CsvMapping {
 }
 
 export function parseCsv(text: string): { headers: string[]; rows: CsvRow[] } {
-  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n").filter(l => l.trim())
-  if (lines.length < 2) return { headers: [], rows: [] }
+  // Strip a leading UTF-8 BOM (Excel exports include one) so the first header is clean.
+  text = text.replace(/^﻿/, "")
+  // Normalise line endings; the tokenizer only deals with "\n".
+  text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+  if (!text.trim()) return { headers: [], rows: [] }
 
-  const headers = parseCsvLine(lines[0])
+  // Detect the delimiter once from the header line: default to comma, switch to
+  // semicolon only when the header clearly uses more of them (European/Excel CSVs).
+  const nl = text.indexOf("\n")
+  const firstLine = nl === -1 ? text : text.slice(0, nl)
+  const delimiter = countUnquoted(firstLine, ";") > countUnquoted(firstLine, ",") ? ";" : ","
+
+  // Tokenize the whole text in one pass, tracking quote state across line breaks so a
+  // quoted field containing a newline (RFC 4180) stays a single field.
+  const records = tokenize(text, delimiter).filter(r => r.some(v => v.trim() !== ""))
+  if (records.length < 2) return { headers: [], rows: [] }
+
+  const headers = records[0].map(h => h.trim())
   const rows: CsvRow[] = []
-
-  for (let i = 1; i < lines.length; i++) {
-    const values = parseCsvLine(lines[i])
-    if (values.every(v => !v)) continue
+  for (let i = 1; i < records.length; i++) {
+    const values = records[i]
     const row: CsvRow = {}
-    headers.forEach((h, idx) => { row[h] = values[idx] ?? "" })
+    headers.forEach((h, idx) => { row[h] = (values[idx] ?? "").trim() })
     rows.push(row)
   }
-
   return { headers, rows }
 }
 
-function parseCsvLine(line: string): string[] {
-  const result: string[] = []
-  let current = ""
+function tokenize(text: string, delimiter: string): string[][] {
+  const records: string[][] = []
+  let record: string[] = []
+  let field = ""
   let inQuotes = false
 
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]
-    if (ch === '"') {
-      if (inQuotes && line[i + 1] === '"') { current += '"'; i++ }
-      else inQuotes = !inQuotes
-    } else if ((ch === "," || ch === ";") && !inQuotes) {
-      result.push(current.trim())
-      current = ""
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++ }  // escaped quote
+        else inQuotes = false
+      } else {
+        field += ch
+      }
+    } else if (ch === '"') {
+      inQuotes = true
+    } else if (ch === delimiter) {
+      record.push(field); field = ""
+    } else if (ch === "\n") {
+      record.push(field); field = ""
+      records.push(record); record = []
     } else {
-      current += ch
+      field += ch
     }
   }
-  result.push(current.trim())
-  return result
+  record.push(field)
+  records.push(record)
+  return records
+}
+
+function countUnquoted(line: string, target: string): number {
+  let n = 0, inQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i]
+    if (c === '"') inQuotes = !inQuotes
+    else if (c === target && !inQuotes) n++
+  }
+  return n
 }
 
 export function autoDetectMapping(headers: string[]): Partial<CsvMapping> {
