@@ -6,22 +6,27 @@
 -- every RLS-gated select returns zero rows, because auth.uid() coerces the
 -- Firebase `sub` to uuid and yields NULL. See src/lib/supabase.ts.
 
--- 1. Drop the auth.users foreign keys (they can never be satisfied for Firebase users).
-alter table public.people        drop constraint if exists people_user_id_fkey;
-alter table public.connections   drop constraint if exists connections_user_id_fkey;
-alter table public.groups_custom drop constraint if exists groups_custom_user_id_fkey;
-
--- 2. Store the Firebase UID as text instead of uuid.
-alter table public.people        alter column user_id type text using user_id::text;
-alter table public.connections   alter column user_id type text using user_id::text;
-alter table public.groups_custom alter column user_id type text using user_id::text;
-
--- 3. Rewrite RLS to compare against the Firebase JWT `sub` claim (text), as the
---    Supabase client documents it should.
+-- 1. Drop the RLS policies FIRST. Postgres refuses to alter the type of a column
+--    that a policy expression references ("cannot alter type of a column used in
+--    a policy definition"), so the old policies must go before the type change.
 drop policy if exists "own_people"      on public.people;
 drop policy if exists "own_connections" on public.connections;
 drop policy if exists "own_groups"      on public.groups_custom;
 
+-- 2. Drop the auth.users foreign keys (they can never be satisfied for Firebase users).
+alter table public.people        drop constraint if exists people_user_id_fkey;
+alter table public.connections   drop constraint if exists connections_user_id_fkey;
+alter table public.groups_custom drop constraint if exists groups_custom_user_id_fkey;
+
+-- 3. Store the Firebase UID as text instead of uuid. Dependent indexes
+--    (people_user_*, connections_user_*, the undirected-pair index) are rebuilt
+--    automatically by the type change.
+alter table public.people        alter column user_id type text using user_id::text;
+alter table public.connections   alter column user_id type text using user_id::text;
+alter table public.groups_custom alter column user_id type text using user_id::text;
+
+-- 4. Recreate RLS to compare against the Firebase JWT `sub` claim (text), as the
+--    Supabase client documents it should.
 create policy "own_people" on public.people
   for all
   using ((auth.jwt() ->> 'sub') = user_id)
