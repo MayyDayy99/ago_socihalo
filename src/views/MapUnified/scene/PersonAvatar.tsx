@@ -337,7 +337,8 @@ export default memo(AvatarImpl, (prev, next) =>
   prev.isPathHighlighted === next.isPathHighlighted &&
   prev.isDimmed          === next.isDimmed &&
   prev.isPressed         === next.isPressed &&
-  prev.talkingToId       === next.talkingToId &&
-  prev.onClick           === next.onClick &&
-  prev.onPointerDown     === next.onPointerDown
+  prev.talkingToId       === next.talkingToId
+  // onClick/onPointerDown/onPointerOver/onPointerOut are intentionally NOT compared: Scene
+  // passes fresh inline closures every render, and they forward to stable getState-based
+  // handlers, so comparing them would defeat the memo (re-render every avatar on each hover).
 )

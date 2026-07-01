@@ -25,6 +25,9 @@ export default function CameraRig({ modeTween }: CameraRigProps) {
   const fromPosRef    = useRef(new THREE.Vector3())
   const fromTargetRef = useRef(new THREE.Vector3())
   const fromFovRef    = useRef(35)
+  // Reusable scratch vectors for the per-frame lerp targets (avoid allocating each frame).
+  const toPosRef    = useRef(new THREE.Vector3())
+  const toTargetRef = useRef(new THREE.Vector3())
 
   // On mount: place camera at the persisted mode's preset, no animation
   useEffect(() => {
@@ -68,14 +71,14 @@ export default function CameraRig({ modeTween }: CameraRigProps) {
       // Lerp position
       camera.position.lerpVectors(
         fromPosRef.current,
-        new THREE.Vector3(...target.position),
+        toPosRef.current.set(...target.position),
         alpha,
       )
       // Lerp orbit target
       if (controlsRef.current) {
         controlsRef.current.target.lerpVectors(
           fromTargetRef.current,
-          new THREE.Vector3(...target.target),
+          toTargetRef.current.set(...target.target),
           alpha,
         )
       }

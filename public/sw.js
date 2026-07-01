@@ -48,17 +48,18 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
-  // Same-origin static assets: cache-first with runtime caching.
+  // Same-origin static assets: stale-while-revalidate. Serve the cached copy fast, but
+  // always refresh it in the background so non-content-hashed files (manifest, icons,
+  // favicon, the offline shell) self-heal after a deploy without a manual cache-version bump.
   event.respondWith((async () => {
     const cache = await caches.open(ASSET_CACHE)
     const cached = await cache.match(req)
-    if (cached) return cached
-    try {
-      const res = await fetch(req)
-      if (res.ok && res.type === "basic") cache.put(req, res.clone())
-      return res
-    } catch {
-      return cached || Response.error()
-    }
+    const fetching = fetch(req)
+      .then((res) => {
+        if (res.ok && res.type === "basic") cache.put(req, res.clone())
+        return res
+      })
+      .catch(() => null)
+    return cached || (await fetching) || Response.error()
   })())
 })

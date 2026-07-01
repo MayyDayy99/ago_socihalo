@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { motion } from "framer-motion"
 
 const SHORTCUTS = [
@@ -21,6 +22,13 @@ const SHORTCUTS = [
 interface Props { onClose: () => void }
 
 export default function ShortcutsOverlay({ onClose }: Props) {
+  // The overlay documents ESC as its close key — make the physical key actually work.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose() }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onClose])
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"

@@ -1,7 +1,7 @@
 import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber"
 import { Suspense, useCallback, useMemo, useRef, useState, useEffect } from "react"
 import * as THREE from "three"
-import { usePeople, useUpdatePerson } from "../../hooks/usePeople"
+import { usePeople, useUpdatePersonPosition } from "../../hooks/usePeople"
 import { useConnections, useCreateConnection } from "../../hooks/useConnections"
 import { useAppStore } from "../../store/useAppStore"
 import { Button } from "../../components/ui/Button"
@@ -34,7 +34,7 @@ function ThreeContextBridge({ refOut }: { refOut: React.MutableRefObject<SceneRe
 export default function MapUnifiedView() {
   const { data: people = [], isLoading } = usePeople()
   const { data: connections = [] } = useConnections()
-  const updatePerson = useUpdatePerson()
+  const persistPosition = useUpdatePersonPosition()
   const createConn   = useCreateConnection()
   const {
     selectedPersonId, setSelectedPersonId,
@@ -88,6 +88,9 @@ export default function MapUnifiedView() {
   const handlePersonClick = useCallback((id: string) => {
     // Suppress click if a real drag was performed (click fires after pointerup)
     if (dragStateRef.current && dragStateRef.current.moved && dragStateRef.current.dragActive) return
+    // Read connect state live so this handler stays referentially stable (lets the memoized
+    // PersonAvatar skip re-renders correctly).
+    const { connectMode, connectFromId } = useAppStore.getState()
     if (connectMode) {
       if (!connectFromId) {
         setConnectFromId(id)
@@ -100,7 +103,7 @@ export default function MapUnifiedView() {
     } else {
       setSelectedPersonId(id)
     }
-  }, [connectMode, connectFromId, setConnectFromId, setConnectMode, setSelectedPersonId])
+  }, [setConnectFromId, setConnectMode, setSelectedPersonId])
 
   // Pointer-down on an avatar — starts the drag/long-press logic
   const handlePersonPointerDown = useCallback((id: string, e: ThreeEvent<PointerEvent>) => {
@@ -109,7 +112,7 @@ export default function MapUnifiedView() {
       setConnectMode(true)
       return
     }
-    if (connectMode) return
+    if (useAppStore.getState().connectMode) return
 
     const native = e.nativeEvent as PointerEvent
     const isTouch = native.pointerType === "touch"
@@ -144,8 +147,9 @@ export default function MapUnifiedView() {
       raycaster.setFromCamera(ndc, refs.camera)
       const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
       const hit = new THREE.Vector3()
-      raycaster.ray.intersectPlane(plane, hit)
-      if (!hit) return
+      // intersectPlane returns null (leaving `hit` untouched) when the ray misses the
+      // plane — `hit` is always a truthy object, so check the RETURN value, not `hit`.
+      if (!raycaster.ray.intersectPlane(plane, hit)) return
       pinNode(id, hit.x, hit.z)
       reheat(0.12)
     }
@@ -182,8 +186,8 @@ export default function MapUnifiedView() {
       if (state.moved && state.dragActive) {
         const pos = positionsRef.current.get(id)
         if (pos) {
-          // Persist in DB (pixel scale)
-          updatePerson.mutate({
+          // Persist in DB (pixel scale) without invalidating ["people"] (would rebuild the sim).
+          persistPosition.mutate({
             id,
             pinned_x: pos.x / WORLD_SCALE,
             pinned_y: pos.z / WORLD_SCALE,
@@ -207,7 +211,7 @@ export default function MapUnifiedView() {
     window.addEventListener("pointermove", onPointerMove)
     window.addEventListener("pointerup", onPointerUp)
     window.addEventListener("pointercancel", onPointerUp)
-  }, [connectMode, setConnectFromId, setConnectMode, pinNode, reheat, positionsRef, updatePerson])
+  }, [setConnectFromId, setConnectMode, pinNode, reheat, positionsRef, persistPosition])
 
   const handlePersonHover = useCallback((id: string | null) => {
     setHoveredId(id)

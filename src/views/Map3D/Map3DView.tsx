@@ -956,8 +956,9 @@ export default function Map3DView() {
   // every render), which keeps the memoized PersonAvatar from re-rendering needlessly.
   const persistPositionRef = useRef(persistPosition)
   persistPositionRef.current = persistPosition
-  // Cleanup fn for an in-progress drag gesture, so it can be torn down on unmount.
-  const gestureCleanupRef = useRef<(() => void) | null>(null)
+  // Cleanups for in-progress drag gestures (a Set so concurrent multi-touch drags each
+  // keep their own), torn down on unmount.
+  const gestureCleanupsRef = useRef<Set<() => void>>(new Set())
   const createConn   = useCreateConnection()
   const {
     setSelectedPersonId,
@@ -1156,18 +1157,22 @@ export default function Map3DView() {
       window.removeEventListener("pointermove", onMove)
       window.removeEventListener("pointerup", onUp)
       window.removeEventListener("pointercancel", onUp)
-      gestureCleanupRef.current = null
+      gestureCleanupsRef.current.delete(cleanup)
     }
 
-    // Expose the active cleanup so an unmount mid-drag can tear the listeners down.
-    gestureCleanupRef.current = cleanup
+    // Register this gesture's cleanup so an unmount mid-drag can tear its listeners down.
+    gestureCleanupsRef.current.add(cleanup)
     window.addEventListener("pointermove", onMove)
     window.addEventListener("pointerup", onUp)
     window.addEventListener("pointercancel", onUp)
   }, [setConnectFromId, setConnectMode])
 
-  // If the 3D view unmounts mid-drag, tear down any window listeners left attached.
-  useEffect(() => () => { gestureCleanupRef.current?.() }, [])
+  // If the 3D view unmounts mid-drag, tear down any window listeners left attached
+  // (every in-flight gesture, not just the most recent).
+  useEffect(() => () => {
+    gestureCleanupsRef.current.forEach((fn) => fn())
+    gestureCleanupsRef.current.clear()
+  }, [])
 
   const showLoading = isLoading
   const showEmpty   = !isLoading && people.length === 0

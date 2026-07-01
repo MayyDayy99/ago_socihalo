@@ -20,7 +20,10 @@ function valueOf(line: string): string {
 }
 
 export function parseVCard(vcf: string): ParsedContact {
-  const unfolded = vcf.replace(/\r\n[ \t]/g, "").replace(/\r\n/g, "\n")
+  // Normalise line endings first, THEN unfold continuation lines. parseVCardFile already
+  // converts CRLF→LF before calling this, so unfolding must match LF-folded lines too —
+  // otherwise folded FN/EMAIL/TEL values get truncated.
+  const unfolded = vcf.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/\n[ \t]/g, "")
   const lines = unfolded.split("\n")
   const contact: ParsedContact = {
     display_name: "",

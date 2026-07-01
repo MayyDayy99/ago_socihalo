@@ -35,7 +35,9 @@ export default function PeopleList() {
       if (p.strength < filters.strengthMin) return false
       if (filters.search) {
         const q = filters.search.toLowerCase()
-        if (!p.display_name.toLowerCase().includes(q)) return false
+        if (!p.display_name.toLowerCase().includes(q) &&
+            !p.emails.some(e => e.toLowerCase().includes(q)) &&
+            !p.tags.some(t => t.toLowerCase().includes(q))) return false
       }
       return true
     })

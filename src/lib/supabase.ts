@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js"
+import { onIdTokenChanged } from "firebase/auth"
 import { firebaseAuth } from "./firebase"
 
 const url     = import.meta.env.VITE_SUPABASE_URL
@@ -20,9 +21,11 @@ if (!url || !anonKey) {
 //
 // We disable Supabase's own session machinery — we have no Supabase users.
 //
-// `accessToken` is the supported hook for third-party auth: supabase-js calls it
-// whenever it needs a bearer token and attaches the result to BOTH PostgREST (REST)
-// requests AND the Realtime websocket (via realtime.setAuth), refreshing as needed.
+// `accessToken` is the supported hook for third-party auth: supabase-js calls it whenever
+// it needs a bearer token and attaches the result to BOTH PostgREST (REST) requests and the
+// Realtime websocket. REST re-invokes it per request, so REST is always fresh. The Realtime
+// socket, however, only gets the token at connect time and does NOT re-fetch it once an
+// explicit token has been set, so we refresh it ourselves on token rotation below.
 // A previous global.fetch wrapper only covered REST, leaving Realtime unauthenticated.
 export const supabase = createClient(url, anonKey, {
   auth: {
@@ -38,4 +41,12 @@ export const supabase = createClient(url, anonKey, {
       return null
     }
   },
+})
+
+// Firebase rotates the ID token (~hourly, and on sign-in/out) and fires onIdTokenChanged.
+// Push each fresh token to the Realtime socket so RLS-gated postgres_changes keep flowing;
+// without this the live map would silently stop updating after the first token expires.
+onIdTokenChanged(firebaseAuth, (user) => {
+  if (!user) return
+  user.getIdToken().then((token) => supabase.realtime.setAuth(token)).catch(() => {})
 })
