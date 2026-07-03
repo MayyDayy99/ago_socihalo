@@ -6,6 +6,7 @@ import { useConnections } from "../../hooks/useConnections"
 import { usePwaInstall } from "../../hooks/usePwaInstall"
 import { exportAllVcf, exportAllJson } from "../../lib/vcard-export"
 import { Download, LogOut, Smartphone } from "lucide-react"
+import MergeSection from "../Merge/MergeSection"
 
 export default function SettingsView() {
   const { data: people = [] } = usePeople()
@@ -58,6 +59,8 @@ export default function SettingsView() {
           </div>
           <p className="text-xs text-muted">A VCF fájl visszaimportálható Google Névjegyekbe, macOS-be vagy Outlookba.</p>
         </section>
+
+        <MergeSection />
 
         <section className="bg-surface border border-border rounded-xl p-5 shadow-card">
           <h2 className="text-sm font-semibold text-text mb-3">Rendszer</h2>

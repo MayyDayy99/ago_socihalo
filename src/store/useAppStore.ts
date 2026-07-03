@@ -46,6 +46,10 @@ interface AppStore {
 
   createPersonOpen: boolean
   setCreatePersonOpen: (open: boolean) => void
+
+  // Network merge: when set, the app shows the combined merge view for this session.
+  activeMergeSessionId: string | null
+  setActiveMergeSessionId: (id: string | null) => void
 }
 
 const defaultFilters: FilterState = {
@@ -86,4 +90,7 @@ export const useAppStore = create<AppStore>((set) => ({
 
   createPersonOpen: false,
   setCreatePersonOpen: (open) => set({ createPersonOpen: open }),
+
+  activeMergeSessionId: null,
+  setActiveMergeSessionId: (id) => set({ activeMergeSessionId: id }),
 }))

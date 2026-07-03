@@ -22,6 +22,10 @@ import CreatePersonModal from "./components/CreatePersonModal"
 import ShortcutsOverlay  from "./components/ShortcutsOverlay"
 import { ErrorBoundary } from "./components/ErrorBoundary"
 import { ToastContainer } from "./components/ui/Toast"
+import MergeInviteBanner from "./components/MergeInviteBanner"
+import { useMergeRealtime } from "./hooks/useMerge"
+
+const MergeView = lazy(() => import("./views/Merge/MergeView"))
 
 import { Map, List, BarChart2, Upload, Settings, Search, Keyboard } from "lucide-react"
 import type { View } from "./store/useAppStore"
@@ -58,6 +62,7 @@ function NexusLogo({ size = 18 }: { size?: number }) {
 
 function AppShell() {
   useNetworkRealtime()
+  useMergeRealtime()
 
   // Subscribe to individual slices so the shell only re-renders when these change,
   // not on every unrelated store update (filters, connect mode, path highlight…).
@@ -67,6 +72,7 @@ function AppShell() {
   const selectedPersonId = useAppStore(s => s.selectedPersonId)
   const commandPaletteOpen = useAppStore(s => s.commandPaletteOpen)
   const setCommandPaletteOpen = useAppStore(s => s.setCommandPaletteOpen)
+  const activeMergeSessionId = useAppStore(s => s.activeMergeSessionId)
 
   const isMobile = useIsMobile()
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
@@ -231,6 +237,16 @@ function AppShell() {
       <AnimatePresence>
         {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
       </AnimatePresence>
+
+      {/* Global merge-invite banner (live) */}
+      <MergeInviteBanner />
+
+      {/* Network merge — full-screen focused view */}
+      {activeMergeSessionId && (
+        <Suspense fallback={<LoadingScreen />}>
+          <MergeView />
+        </Suspense>
+      )}
 
       <CreatePersonModal />
       <ToastContainer />
