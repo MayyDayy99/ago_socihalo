@@ -238,6 +238,20 @@ export default function MapView() {
 
   const pathSet = useMemo(() => pathHighlight ? new Set(pathHighlight) : null, [pathHighlight])
 
+  // Hover highlight: debounce CLEARING the hover a touch, so sweeping the cursor straight
+  // from one node to the next doesn't briefly drop to "no hover" and flash the whole graph
+  // back to full opacity between them. Entering a node cancels any pending clear.
+  const hoverClearRef = useRef<number | null>(null)
+  const handleHoverEnter = useCallback((id: string) => {
+    if (hoverClearRef.current !== null) { clearTimeout(hoverClearRef.current); hoverClearRef.current = null }
+    setHoveredId(id)
+  }, [])
+  const handleHoverLeave = useCallback(() => {
+    if (hoverClearRef.current !== null) clearTimeout(hoverClearRef.current)
+    hoverClearRef.current = window.setTimeout(() => { hoverClearRef.current = null; setHoveredId(null) }, 110)
+  }, [])
+  useEffect(() => () => { if (hoverClearRef.current !== null) clearTimeout(hoverClearRef.current) }, [])
+
   // ── Click + drag handlers ──────────────────────────────
   const handleNodeClick = useCallback((person: Person) => {
     // A drag just finished → the browser's synthesized click should not select/open the node.
@@ -480,8 +494,8 @@ export default function MapView() {
                   isDimmed={dimmed}
                   isPathHighlighted={inPath}
                   onClick={() => handleNodeClick(n)}
-                  onMouseEnter={() => setHoveredId(n.id)}
-                  onMouseLeave={() => setHoveredId(null)}
+                  onMouseEnter={() => handleHoverEnter(n.id)}
+                  onMouseLeave={handleHoverLeave}
                   onPointerDown={(e) => handleNodePointerDown(e, n)}
                 />
               </g>

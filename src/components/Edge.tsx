@@ -29,8 +29,8 @@ function EdgeImpl({ connection, fromX, fromY, toX, toY, isDimmed, isPathHighligh
       x2={toX}   y2={toY}
       stroke={color}
       strokeWidth={strokeW}
-      strokeOpacity={opacity}
       strokeDasharray={isBridge ? "5,4" : undefined}
+      style={{ strokeOpacity: opacity, transition: "stroke-opacity 160ms ease" }}
     />
   )
 }

@@ -58,7 +58,7 @@ function NodeImpl({
   return (
     <g
       transform={`translate(${x},${y})`}
-      style={{ opacity, cursor: "pointer", touchAction: "none" }}
+      style={{ opacity, cursor: "pointer", touchAction: "none", transition: "opacity 160ms ease" }}
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
