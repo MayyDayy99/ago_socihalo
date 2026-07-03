@@ -7,10 +7,14 @@ import { useMergeSessions, useMyIdentity } from "../hooks/useMerge"
 export default function MergeInviteBanner() {
   const { uid, email } = useMyIdentity()
   const setActiveView = useAppStore(s => s.setActiveView)
+  const activeMergeSessionId = useAppStore(s => s.activeMergeSessionId)
   const { data: sessions = [] } = useMergeSessions()
 
-  const incoming = sessions.filter(s => s.status === "pending" && s.initiator_id !== uid && s.partner_email === email)
-  if (incoming.length === 0) return null
+  const incoming = sessions.filter(s =>
+    s.status === "pending" && s.initiator_id !== uid && s.partner_email === email &&
+    new Date(s.expires_at).getTime() > Date.now())
+  // Don't float the banner over the full-screen merge view.
+  if (activeMergeSessionId || incoming.length === 0) return null
 
   return (
     <AnimatePresence>

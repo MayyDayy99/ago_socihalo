@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import * as d3 from "d3"
 import { X, Users, GitMerge, Route, EyeOff, ShieldOff, SlidersHorizontal } from "lucide-react"
 import { useAppStore } from "../../store/useAppStore"
@@ -22,7 +23,15 @@ type MKind = keyof typeof COLOR
 export default function MergeView() {
   const sessionId = useAppStore(s => s.activeMergeSessionId)
   const setActiveMergeSessionId = useAppStore(s => s.setActiveMergeSessionId)
-  const close = () => setActiveMergeSessionId(null)
+  const qc = useQueryClient()
+  const close = () => {
+    if (sessionId) {
+      // Purge partner data from the client cache on exit (ephemeral guarantee).
+      qc.removeQueries({ queryKey: ["merge_view", sessionId] })
+      qc.removeQueries({ queryKey: ["merge_candidates", sessionId] })
+    }
+    setActiveMergeSessionId(null)
+  }
 
   const { uid } = useMyIdentity()
   const { data: sessions = [] } = useMergeSessions()
@@ -45,6 +54,17 @@ export default function MergeView() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.status])
+
+  // Time-based expiry: no realtime event fires when the 24h window simply elapses, so close
+  // ourselves (and drop the loaded partner data) exactly when expires_at passes.
+  useEffect(() => {
+    if (!session?.expires_at) return
+    const ms = new Date(session.expires_at).getTime() - Date.now()
+    if (ms <= 0) { close(); return }
+    const t = setTimeout(() => { toast.info("A megosztás lejárt."); close() }, ms)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.expires_at])
 
   if (!sessionId) return null
   const myRole: "initiator" | "partner" = session?.initiator_id === uid ? "initiator" : "partner"
@@ -103,6 +123,7 @@ function MergeGraph({ view }: { view: MergeViewData }) {
   const { data: ownPeople = [] } = usePeople()
   const { data: ownConnections = [] } = useConnections()
   const [pos, setPos] = useState<Map<string, { x: number; y: number }>>(new Map())
+  const posRef = useRef<Map<string, { x: number; y: number }>>(new Map())
   const [hover, setHover] = useState<string | null>(null)
 
   const { nodes, links } = useMemo(() => {
@@ -134,9 +155,13 @@ function MergeGraph({ view }: { view: MergeViewData }) {
   }, [ownPeople, ownConnections, view])
 
   useEffect(() => {
-    if (nodes.length === 0) { setPos(new Map()); return }
+    if (nodes.length === 0) { posRef.current = new Map(); setPos(new Map()); return }
     type SNode = GNode & d3.SimulationNodeDatum
-    const simNodes: SNode[] = nodes.map(n => ({ ...n }))
+    // Seed from prior positions so a realtime refetch nudges rather than reshuffles the layout.
+    const simNodes: SNode[] = nodes.map(n => {
+      const prev = posRef.current.get(n.id)
+      return prev ? { ...n, x: prev.x, y: prev.y } : { ...n }
+    })
     const idToNode = new Map(simNodes.map(n => [n.id, n]))
     const simLinks: d3.SimulationLinkDatum<SNode>[] = links
       .map(l => ({ source: idToNode.get(l.source), target: idToNode.get(l.target) }))
@@ -148,7 +173,9 @@ function MergeGraph({ view }: { view: MergeViewData }) {
       .force("center", d3.forceCenter(0, 0))
       .stop()
     for (let i = 0; i < 320; i++) s.tick()
-    setPos(new Map(simNodes.map(n => [n.id, { x: n.x ?? 0, y: n.y ?? 0 }])))
+    const next = new Map(simNodes.map(n => [n.id, { x: n.x ?? 0, y: n.y ?? 0 }]))
+    posRef.current = next
+    setPos(next)
   }, [nodes, links])
 
   const box = useMemo(() => {
@@ -223,20 +250,26 @@ function MergePanel({
   const ownById = useMemo(() => new Map(ownPeople.map(p => [p.id, p])), [ownPeople])
   const partnerById = useMemo(() => new Map((view?.partner_people ?? []).map(p => [p.id, p])), [view])
 
-  const overlap = view?.identity_pairs.length ?? 0
+  // Count distinct shared *people*, not identity pairs (one person can match several rows).
+  const overlap = view ? new Set(view.identity_pairs.map(p => p.mine)).size : 0
   const bridges = (view?.partner_people ?? []).filter(p => !p.in_overlap)
   const hidden = view?.hidden_partner_count ?? 0
 
   const diffs = useMemo(() => {
     if (!view) return []
-    return view.identity_pairs.map(pair => {
+    const seen = new Set<string>()
+    const out: { key: string; name: string; mine: number; theirs: number; d: number }[] = []
+    for (const pair of view.identity_pairs) {
+      if (seen.has(pair.mine)) continue
       const mine = ownById.get(pair.mine)
       const theirs = partnerById.get(pair.theirs)
-      if (!mine || !theirs || theirs.strength == null) return null
+      if (!mine || !theirs || theirs.strength == null) continue
       const d = Math.abs(mine.strength - theirs.strength)
-      return d >= 2 ? { name: mine.display_name, mine: mine.strength, theirs: theirs.strength, d } : null
-    }).filter((x): x is { name: string; mine: number; theirs: number; d: number } => !!x)
-      .sort((a, b) => b.d - a.d).slice(0, 5)
+      if (d < 2) continue
+      seen.add(pair.mine)
+      out.push({ key: pair.mine, name: mine.display_name, mine: mine.strength, theirs: theirs.strength, d })
+    }
+    return out.sort((a, b) => b.d - a.d).slice(0, 5)
   }, [view, ownById, partnerById])
 
   const expiresIn = useMemo(() => {
@@ -287,7 +320,7 @@ function MergePanel({
             <div className="text-xs text-muted uppercase tracking-wider mb-1.5">Erősség-eltérések</div>
             <div className="space-y-1">
               {diffs.map(d => (
-                <div key={d.name} className="flex items-center justify-between text-sm">
+                <div key={d.key} className="flex items-center justify-between text-sm">
                   <span className="text-text truncate">{d.name}</span>
                   <span className="text-muted text-xs flex-shrink-0">te ★{d.mine} · ő ★{d.theirs}</span>
                 </div>

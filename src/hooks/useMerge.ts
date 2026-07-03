@@ -77,7 +77,12 @@ export function useRevokeMerge() {
       const { error } = await supabase.rpc("revoke_merge", { p_session_id: sessionId })
       if (error) throw error
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["merge_sessions"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["merge_sessions"] })
+      // Purge (not just invalidate) any partner data from the client cache on revoke.
+      qc.removeQueries({ queryKey: ["merge_view"] })
+      qc.removeQueries({ queryKey: ["merge_candidates"] })
+    },
   })
 }
 
@@ -90,7 +95,11 @@ export function useComputeMatches() {
       if (error) throw error
       return data as number
     },
-    onSuccess: (_d, sessionId) => qc.invalidateQueries({ queryKey: ["merge_candidates", sessionId] }),
+    onSuccess: (_d, sessionId) => {
+      qc.invalidateQueries({ queryKey: ["merge_candidates", sessionId] })
+      // Also refetch the view so freshly auto-confirmed overlaps show without waiting for realtime.
+      qc.invalidateQueries({ queryKey: ["merge_view", sessionId] })
+    },
   })
 }
 

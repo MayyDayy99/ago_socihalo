@@ -30,9 +30,11 @@ export default function MergeSection() {
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteLevel, setInviteLevel] = useState<ShareLevel>("standard")
 
-  const incoming = sessions.filter(s => s.status === "pending" && s.initiator_id !== uid && s.partner_email === email)
-  const outgoing = sessions.filter(s => s.status === "pending" && s.initiator_id === uid)
-  const active   = sessions.filter(s => s.status === "active")
+  // Treat time-expired rows as gone even if their status hasn't been flipped yet.
+  const live = (s: MergeSession) => new Date(s.expires_at).getTime() > Date.now()
+  const incoming = sessions.filter(s => s.status === "pending" && s.initiator_id !== uid && s.partner_email === email && live(s))
+  const outgoing = sessions.filter(s => s.status === "pending" && s.initiator_id === uid && live(s))
+  const active   = sessions.filter(s => s.status === "active" && live(s))
 
   async function sendInvite() {
     const e = inviteEmail.trim().toLowerCase()
