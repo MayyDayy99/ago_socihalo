@@ -295,6 +295,9 @@ function PersonAvatarImpl({
   const scaleRef = useRef<THREE.Group>(null)
   const ringRef  = useRef<THREE.Mesh>(null)
   const ringMaterialRef = useRef<THREE.MeshBasicMaterial>(null)
+  // Body materials (collected once) + animated dim factor, so dim/undim fades instead of snapping.
+  const bodyMatsRef = useRef<THREE.Material[] | null>(null)
+  const dimRef = useRef(dimmed ? 1 : 0)
   const leftFootRef = useRef<THREE.Mesh>(null)
   const rightFootRef = useRef<THREE.Mesh>(null)
   const leftLegRef = useRef<THREE.Mesh>(null)
@@ -465,6 +468,27 @@ function PersonAvatarImpl({
       const targetOpacity = dimmed ? Math.min(0.18, 0.08 + attention * 0.1) : clamp01(0.12 + attention * 0.58)
       ringMaterialRef.current.opacity = THREE.MathUtils.lerp(ringMaterialRef.current.opacity, targetOpacity, 0.2)
     }
+
+    // Smooth dim/undim: lerp body-material opacity toward the target instead of snapping.
+    if (bodyMatsRef.current === null && scaleRef.current) {
+      const list: THREE.Material[] = []
+      scaleRef.current.traverse((o) => {
+        const mesh = o as THREE.Mesh
+        if (mesh.isMesh && mesh.visible && mesh.material && mesh.material !== ringMaterialRef.current) {
+          const mm = mesh.material as THREE.Material | THREE.Material[]
+          if (Array.isArray(mm)) list.push(...mm); else list.push(mm)
+        }
+      })
+      bodyMatsRef.current = list
+    }
+    {
+      const dimTarget = Math.min(0.32, baseOpacity * 0.55)
+      dimRef.current += ((dimmed ? 1 : 0) - dimRef.current) * (1 - Math.exp(-dt * 9))
+      const applied = baseOpacity + (dimTarget - baseOpacity) * dimRef.current
+      const mats = bodyMatsRef.current
+      if (mats) for (let i = 0; i < mats.length; i++) (mats[i] as THREE.Material & { opacity: number }).opacity = applied
+    }
+
     lastPosRef.current.copy(currentPosRef.current)
   })
 
@@ -488,11 +512,11 @@ function PersonAvatarImpl({
             {/* Feet — small flattened ovals pointing slightly forward (+z) */}
             <mesh ref={leftFootRef} position={[-0.075, 0.025, 0.018]} scale={[1.4, 0.5, 1.7]} castShadow>
               <sphereGeometry args={[0.06, 16, 16]} />
-              <meshStandardMaterial color={footColor} roughness={0.7} transparent opacity={opacity} />
+              <meshStandardMaterial color={footColor} roughness={0.7} transparent opacity={baseOpacity} />
             </mesh>
             <mesh ref={rightFootRef} position={[0.075, 0.025, 0.018]} scale={[1.4, 0.5, 1.7]} castShadow>
               <sphereGeometry args={[0.06, 16, 16]} />
-              <meshStandardMaterial color={footColor} roughness={0.7} transparent opacity={opacity} />
+              <meshStandardMaterial color={footColor} roughness={0.7} transparent opacity={baseOpacity} />
             </mesh>
 
             {/* Legs — slim capsules */}
@@ -505,7 +529,7 @@ function PersonAvatarImpl({
                 clearcoat={0.12}
                 clearcoatRoughness={0.4}
                 transparent
-                opacity={opacity}
+                opacity={baseOpacity}
               />
             </mesh>
             <mesh ref={rightLegRef} position={[0.075, 0.27, 0]} castShadow>
@@ -517,7 +541,7 @@ function PersonAvatarImpl({
                 clearcoat={0.12}
                 clearcoatRoughness={0.4}
                 transparent
-                opacity={opacity}
+                opacity={baseOpacity}
               />
             </mesh>
 
@@ -531,7 +555,7 @@ function PersonAvatarImpl({
                 clearcoat={0.14}
                 clearcoatRoughness={0.4}
                 transparent
-                opacity={opacity}
+                opacity={baseOpacity}
               />
             </mesh>
 
@@ -547,44 +571,44 @@ function PersonAvatarImpl({
                 emissive={selected ? new THREE.Color(ringColor) : new THREE.Color("#000000")}
                 emissiveIntensity={selected ? 0.18 : 0}
                 transparent
-                opacity={opacity}
+                opacity={baseOpacity}
               />
             </mesh>
 
             {/* Shoulder caps — small spheres at the torso→arm joint */}
             <mesh position={[-0.21, 1.04, 0]} castShadow>
               <sphereGeometry args={[0.075, 16, 16]} />
-              <meshPhysicalMaterial color={torsoColor} roughness={0.6} clearcoat={0.16} clearcoatRoughness={0.35} transparent opacity={opacity} />
+              <meshPhysicalMaterial color={torsoColor} roughness={0.6} clearcoat={0.16} clearcoatRoughness={0.35} transparent opacity={baseOpacity} />
             </mesh>
             <mesh position={[0.21, 1.04, 0]} castShadow>
               <sphereGeometry args={[0.075, 16, 16]} />
-              <meshPhysicalMaterial color={torsoColor} roughness={0.6} clearcoat={0.16} clearcoatRoughness={0.35} transparent opacity={opacity} />
+              <meshPhysicalMaterial color={torsoColor} roughness={0.6} clearcoat={0.16} clearcoatRoughness={0.35} transparent opacity={baseOpacity} />
             </mesh>
 
             {/* Arms — slim capsules, slight outward angle so they don't clip the torso */}
             <mesh ref={leftArmRef} position={[-0.245, 0.83, 0.015]} rotation={[0, 0, 0.10]} castShadow>
               <capsuleGeometry args={[0.048, 0.40, 8, 16]} />
-              <meshPhysicalMaterial color={torsoColor} roughness={0.6} clearcoat={0.14} clearcoatRoughness={0.4} transparent opacity={opacity} />
+              <meshPhysicalMaterial color={torsoColor} roughness={0.6} clearcoat={0.14} clearcoatRoughness={0.4} transparent opacity={baseOpacity} />
             </mesh>
             <mesh ref={rightArmRef} position={[0.245, 0.83, 0.015]} rotation={[0, 0, -0.10]} castShadow>
               <capsuleGeometry args={[0.048, 0.40, 8, 16]} />
-              <meshPhysicalMaterial color={torsoColor} roughness={0.6} clearcoat={0.14} clearcoatRoughness={0.4} transparent opacity={opacity} />
+              <meshPhysicalMaterial color={torsoColor} roughness={0.6} clearcoat={0.14} clearcoatRoughness={0.4} transparent opacity={baseOpacity} />
             </mesh>
 
             {/* Hands — small skin-tone spheres at the end of each arm */}
             <mesh ref={leftHandRef} position={[-0.295, 0.60, 0.025]} castShadow>
               <sphereGeometry args={[0.062, 16, 16]} />
-              <meshStandardMaterial color={skin} roughness={0.6} transparent opacity={opacity} />
+              <meshStandardMaterial color={skin} roughness={0.6} transparent opacity={baseOpacity} />
             </mesh>
             <mesh ref={rightHandRef} position={[0.295, 0.60, 0.025]} castShadow>
               <sphereGeometry args={[0.062, 16, 16]} />
-              <meshStandardMaterial color={skin} roughness={0.6} transparent opacity={opacity} />
+              <meshStandardMaterial color={skin} roughness={0.6} transparent opacity={baseOpacity} />
             </mesh>
 
             {/* Neck — short tapered cylinder, skin shadow tone */}
             <mesh position={[0, 1.115, 0]} castShadow>
               <cylinderGeometry args={[0.058, 0.07, 0.07, 16]} />
-              <meshStandardMaterial color={skinShadow} roughness={0.65} transparent opacity={opacity} />
+              <meshStandardMaterial color={skinShadow} roughness={0.65} transparent opacity={baseOpacity} />
             </mesh>
 
             {/* HEAD — sphere, skin tone, with subtle clearcoat for the porcelain feel */}
@@ -597,7 +621,7 @@ function PersonAvatarImpl({
                 clearcoat={0.18}
                 clearcoatRoughness={0.32}
                 transparent
-                opacity={opacity}
+                opacity={baseOpacity}
               />
             </mesh>
 
@@ -612,7 +636,7 @@ function PersonAvatarImpl({
                   clearcoat={0.06}
                   clearcoatRoughness={0.5}
                   transparent
-                  opacity={opacity}
+                  opacity={baseOpacity}
                 />
               </mesh>
             )}
@@ -681,8 +705,9 @@ function ConnectionBeamImpl({
   const curve = useRef(new THREE.QuadraticBezierCurve3())
   const sparkRef = useRef<THREE.Mesh>(null)
   const sparkMaterialRef = useRef<THREE.MeshBasicMaterial>(null)
+  const dimOpacityRef = useRef(0.5)  // animated beam opacity (smooth dim/undim)
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock }, delta) => {
     const t = clock.getElapsedTime()
     const wallTime = performance.now() / 1000
     const ovFrom = dragOverridesRef.current.get(connection.from_id)
@@ -724,11 +749,9 @@ function ConnectionBeamImpl({
         ? easeInOut01((wallTime - (sceneEventsRef.current.connections.get(connection.id) ?? wallTime)) / CONNECTION_EVENT_SECONDS)
         : activity.progress
       if (line.material) {
-        line.material.opacity = dimmed
-          ? 0.08
-          : selected
-            ? 0.95
-            : 0.42 + pulse * 0.38
+        const target = dimmed ? 0.08 : selected ? 0.95 : 0.42 + pulse * 0.38
+        dimOpacityRef.current += (target - dimOpacityRef.current) * (1 - Math.exp(-Math.min(delta, 0.05) * 9))
+        line.material.opacity = dimOpacityRef.current
       }
       if (sparkRef.current && sparkMaterialRef.current) {
         if (pulse > 0.02 && !dimmed) {
@@ -758,7 +781,7 @@ function ConnectionBeamImpl({
         color={color}
         lineWidth={selected ? Math.max(2.2, strength * 0.8) : 1.4}
         transparent
-        opacity={dimmed ? 0.08 : selected ? 0.95 : 0.55}
+        opacity={0.5}
         dashed={strength <= 2}
         dashSize={0.12}
         gapSize={0.08}
@@ -968,6 +991,15 @@ export default function Map3DView() {
 
   const [pendingConn, setPendingConn] = useState<{ fromId: string; toId: string } | null>(null)
   const [hoveredPersonId, setHoveredPersonId] = useState<string | null>(null)
+  // Debounce clearing the hover so sweeping across avatars doesn't flash the whole scene
+  // back to full brightness between them (mirrors the 2D map).
+  const hoverClearRef = useRef<number | null>(null)
+  const setHovered = useCallback((id: string | null) => {
+    if (hoverClearRef.current !== null) { clearTimeout(hoverClearRef.current); hoverClearRef.current = null }
+    if (id === null) hoverClearRef.current = window.setTimeout(() => { hoverClearRef.current = null; setHoveredPersonId(null) }, 110)
+    else setHoveredPersonId(id)
+  }, [])
+  useEffect(() => () => { if (hoverClearRef.current !== null) clearTimeout(hoverClearRef.current) }, [])
   const [pressedId, setPressedId] = useState<string | null>(null)
 
   const placedPeople = useMemo(() => computePositions(people), [people])
@@ -1210,7 +1242,7 @@ export default function Map3DView() {
             onPersonClick={onPersonClick}
             onPersonPointerDown={onPersonPointerDown}
             hoveredPersonId={hoveredPersonId}
-            setHovered={setHoveredPersonId}
+            setHovered={setHovered}
             pressedId={pressedId}
             dragOverridesRef={dragOverridesRef}
             liveMotionRef={liveMotionRef}
