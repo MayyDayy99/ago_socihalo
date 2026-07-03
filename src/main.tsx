@@ -10,7 +10,8 @@ createRoot(document.getElementById("root")!).render(
 )
 
 // Register the offline service worker in production only (avoids caching during dev).
-// Scope/URL are derived from the Vite base path so it works on GitHub Pages (/ago_socihalo/).
+// Scope/URL are derived from the Vite base path (import.meta.env.BASE_URL) so this tracks
+// whatever `base` is configured — currently "/" for the root custom domain.
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     const base = import.meta.env.BASE_URL
