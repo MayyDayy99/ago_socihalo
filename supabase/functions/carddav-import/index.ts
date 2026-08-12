@@ -2,8 +2,10 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts"
 
 // Lock CORS to known app origins (configurable via ALLOWED_ORIGINS, comma-separated)
-// instead of "*", so the function can't be driven from arbitrary sites.
-const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "https://mayydayy99.github.io")
+// instead of "*", so the function can't be driven from arbitrary sites. The default now
+// covers the live custom domain; the legacy Pages URL and local dev are kept for convenience.
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ??
+  "https://nexus.maydayprod.app,https://mayydayy99.github.io,http://localhost:5173")
   .split(",").map((s) => s.trim()).filter(Boolean)
 
 function corsFor(req: Request) {
